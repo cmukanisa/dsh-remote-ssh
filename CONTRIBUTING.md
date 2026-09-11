@@ -32,6 +32,9 @@ dsh --profile web --help    # creates $DSH_HOME/profiles
 npm run deps
 ```
 
+`npm install` (used only for the template check's one dev dependency) prunes those
+symlinks, so re-run `npm run deps` after it.
+
 There is **no build step**. The plugin is plain ES modules and the browser half is
 a hand-written bundle, on purpose: a build step is one more thing that can differ
 between a contributor's machine and a user's.
@@ -41,6 +44,7 @@ between a contributor's machine and a user's.
 | Suite | Command | Needs | What it proves |
 |---|---|---|---|
 | Parser | `npm run check` | nothing | every shipped file parses; the browser bundles keep the module-table wrapper |
+| Template | `npm run test:template` | `npm install` | the composition template parses and replaces every shipped provider it must |
 | Unit | `npm run test:unit` | nothing | quoting, path mapping, mirrors, policy containment, the Remote descriptor, the composition template |
 | Installer | `node test/install.test.mjs` | nothing | the three durable changes, exactly once, and that the plugin arrives switched **off** |
 | Windows client | `node test/windows-client.test.mjs` | nothing | no multiplexing promise on Windows; `ControlPath` shortening holds for Windows-shaped paths |
@@ -70,8 +74,13 @@ run left behind, so it is re-runnable.
 ## 3. The CI matrix
 
 `.github/workflows/ci.yml` — parser + unit + installer on Linux, macOS, and
-Windows across Node 20, 22, and 24. This is the baseline; a red here is a genuine
-portability regression.
+Windows across Node 22 and 24 — the range the harness supports, so a green run
+means something about a real deployment. This is the baseline; a red here is a
+genuine portability regression.
+
+Two portability traps this matrix has already caught, both worth remembering:
+a Windows checkout with `core.autocrlf` hands over CRLF (so any line-anchored
+check must normalise first), and `ssh -V` prints on **stderr**.
 
 `.github/workflows/e2e.yml` — four jobs, because a remote workspace is only
 "portable" if it survives all of these:

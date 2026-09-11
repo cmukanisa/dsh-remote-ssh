@@ -7,10 +7,10 @@
 # subclasses take their place; each one keeps the shipped behaviour verbatim for
 # every local path and adds an SSH world for a mirrored remote one.
 #
-# `@@PLUGINS_DIR@@` is substituted by install.mjs with the absolute directory the
-# packages were installed into. Absolute paths are used because a row's relative
-# specifier resolves against the profile directory, and this layer is shared by
-# every profile.
+# The plugin directory placeholder below is substituted by install.mjs with the
+# absolute directory the packages were installed into. Absolute paths are used
+# because a row's relative specifier resolves against the profile directory, and
+# this layer is shared by every profile.
 #
 # Every row is idempotent: re-running the installer replaces this block instead
 # of appending a second copy.

@@ -20,7 +20,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, stat
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGES = ['dsh-remote-ssh', 'dsh-remote-ssh-ui']
@@ -103,7 +103,10 @@ function isEmptyEntryList(text) {
  * @returns the block, markers included.
  */
 function composeBlock(pluginsDir) {
-  const template = readFileSync(join(HERE, 'patch', 'remote-ssh.patch.yml.tpl'), 'utf8')
+  // Normalise first: a Windows checkout with core.autocrlf hands over CRLF, and
+  // the managed block must be byte-identical everywhere for the strip/replace to
+  // stay idempotent.
+  const template = readFileSync(join(HERE, 'patch', 'remote-ssh.patch.yml.tpl'), 'utf8').split('\r\n').join('\n')
   const body = template.split('\n').map((line) => (line.includes('@@PLUGINS_DIR@@') ? line.split('@@PLUGINS_DIR@@').join(pluginsDir) : line)).join('\n')
   return `${BEGIN_MARKER}\n${body.trimEnd()}\n${END_MARKER}`
 }
@@ -227,12 +230,10 @@ function installSettings(options, settingsPath) {
  */
 function checkPrerequisites() {
   const notes = []
-  try {
-    const version = execFileSync('ssh', ['-V'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    notes.push(`ssh: ${version.trim().split('\n')[0]}`)
-  } catch {
-    notes.push('ssh: NOT FOUND — install an OpenSSH client; nothing works without it')
-  }
+  // `ssh -V` prints its banner on STDERR and exits 0, so the version comes from
+  // the merged streams rather than from stdout alone.
+  const banner = spawnSync('ssh', ['-V'], { encoding: 'utf8' }).stderr?.trim().split('\n')[0]
+  notes.push(banner === undefined || banner === '' ? 'ssh: NOT FOUND — install an OpenSSH client; nothing works without it' : `ssh: ${banner}`)
   if (process.platform === 'win32') notes.push('windows: connection multiplexing is unavailable, so every call opens its own connection')
   return notes
 }

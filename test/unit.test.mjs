@@ -125,7 +125,8 @@ check('a hand-built prototype is also accepted', (() => {
 })())
 
 // ── the composition rows the installer writes ────────────────────────────────
-const template = readFileSync(new URL('../patch/remote-ssh.patch.yml.tpl', import.meta.url), 'utf8')
+// LF-normalised: a Windows checkout hands over CRLF and every check below is line-anchored.
+const template = readFileSync(new URL('../patch/remote-ssh.patch.yml.tpl', import.meta.url), 'utf8').split('\r\n').join('\n')
 for (const id of ['remote-ssh', 'fs-remote-ssh', 'shell-remote-ssh', 'subprocess-remote-ssh', 'remote-ssh-ui']) {
   check(`the template declares row ${id}`, template.includes(`id: ${id}`), '')
 }

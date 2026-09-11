@@ -46,6 +46,7 @@ the shipped behaviour verbatim for local paths:
 ## Requirements
 
 - **dsh** installed (`npm install -g @deepseek-ai/dsh`), any profile.
+- **Node 22.19+ or 24+** — the same range the harness itself requires.
 - An **OpenSSH client** on the machine running dsh (`ssh -V`). Windows OpenSSH
   works as a *client*, but without connection multiplexing.
 - A **POSIX SSH server** (Linux, macOS, BSD). A Windows OpenSSH server is refused
@@ -201,8 +202,8 @@ npm run test:e2e      # filesystem, shell, and subprocess over real SSH
 npm run ssh:down
 ```
 
-The CI matrix runs the unit suites on Linux, macOS, and Windows across Node 20,
-22, and 24; the end-to-end suites against an Alpine server, a Debian server, a
+The CI matrix runs the unit suites on Linux, macOS, and Windows across the
+supported Node range (22.19+ and 24+; the harness does not support Node 20); the end-to-end suites against an Alpine server, a Debian server, a
 macOS server, and a Windows server (whose refusal is asserted); and a full harness
 boot where the browser bundle and the Remote namespace are exercised. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

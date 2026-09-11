@@ -20,13 +20,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  oldest-node:
-    name: oldest supported Node (${{ matrix.node }})
+  node-matrix:
+    name: supported Node (${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22', '24']
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -66,22 +66,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install the check's own dependency
+        run: npm install --no-audit --no-fund --no-package-lock
       - name: The template must resolve into a real composition
-        run: |
-          set -eu
-          npm install --global yaml@2 >/dev/null
-          node --input-type=module -e "
-            import { readFileSync } from 'node:fs'
-            import { parse } from 'yaml'
-            const text = readFileSync('patch/remote-ssh.patch.yml.tpl', 'utf8').split('@@PLUGINS_DIR@@').join('/tmp/plugins')
-            const rows = parse(text)
-            if (!Array.isArray(rows)) throw new Error('the template must be a YAML sequence of patch entries')
-            const ids = rows.flatMap((row) => row.insert ? row.insert.map((entry) => entry.id) : [row.id])
-            for (const required of ['remote-ssh','fs-remote-ssh','shell-remote-ssh','subprocess-remote-ssh','remote-ssh-ui','fs-sandbox','bash-sandbox','subprocess']) {
-              if (!ids.includes(required)) throw new Error('missing row ' + required)
-            }
-            console.log('template declares', ids.length, 'rows')
-          "
+        run: node scripts/check-template.mjs
 
   absolute-paths:
     name: no machine-specific paths
@@ -91,7 +79,11 @@ jobs:
       - name: Shipped code must not contain a home directory
         run: |
           set -eu
-          if grep -RIn --exclude-dir=.git --exclude-dir=node_modules -E '(/Users/[a-z]|/home/[a-z]+/|C:\\\\Users)' packages scripts install.mjs install.sh patch; then
+          # Only the code a user actually runs. `test/` and the Docker fixtures
+          # legitimately name `/home/dsh`, because that is the account inside the
+          # disposable container, not a path on anybody's machine.
+          targets="packages/dsh-remote-ssh/lib packages/dsh-remote-ssh-ui/lib scripts install.mjs install.sh patch"
+          if grep -RIn --exclude-dir=node_modules -E '(/Users/[a-z]|/home/[a-z]+/|C:\\\\Users)' $targets; then
             echo "::error::a machine-specific absolute path is committed"; exit 1
           fi
           echo "no machine-specific path found"
