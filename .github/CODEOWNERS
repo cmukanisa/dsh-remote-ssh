@@ -1,0 +1,13 @@
+# Review ownership.
+#
+# The paths below decide what a change can affect, and the first two run with
+# repository permissions once merged — a workflow can publish a release and the
+# installer writes into a user's harness home — so they always warrant a human
+# read, never auto-merge.
+
+/.github/                    @cmukanisa
+/install.sh                  @cmukanisa
+/install.mjs                 @cmukanisa
+/patch/                      @cmukanisa
+/packages/                   @cmukanisa
+/SECURITY.md                 @cmukanisa

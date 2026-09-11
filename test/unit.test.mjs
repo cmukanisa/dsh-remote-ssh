@@ -124,6 +124,21 @@ check('a hand-built prototype is also accepted', (() => {
   return remoteMethods(new Sample())[0].method === 'ping'
 })())
 
+// ── transport security invariants ────────────────────────────────────────────
+// These are asserted as source facts because they are promises a reviewer must be
+// able to re-verify mechanically: the plugin drives the real `ssh` binary and
+// must never weaken the channel it negotiates.
+const transportSources = ['ssh.js', 'registry.js', 'fs.js', 'shell.js', 'subprocess.js']
+  .map((name) => readFileSync(new URL(`../packages/dsh-remote-ssh/lib/${name}`, import.meta.url), 'utf8'))
+  .join('\n')
+check('the transport never disables host-key checking', !/StrictHostKeyChecking=(no|off)/i.test(transportSources))
+check('the transport never asks ssh to ignore known_hosts', !/UserKnownHostsFile=\/dev\/null/.test(transportSources))
+// The quoted-argv form matters: `[ -L "$p" ]` is the POSIX symlink test and
+// appears in every listing script, while `'-L'` would be an ssh port forward.
+check('no forwarding or agent option is ever assembled', !/'\-(L|R|D|A|W)'/.test(transportSources) && !/ForwardAgent|LocalForward|RemoteForward|DynamicForward/.test(transportSources))
+check('passwords are passed through the environment, never as an argument', !/sshpass['"],\s*['"]\-p/.test(transportSources) && /'-e'/.test(transportSources))
+check('the multiplexing socket lives in a private directory', /mkdirSync\(this\.controlDir, \{ recursive: true, mode: 0o700 \}\)/.test(transportSources))
+
 // ── the composition rows the installer writes ────────────────────────────────
 // LF-normalised: a Windows checkout hands over CRLF and every check below is line-anchored.
 const template = readFileSync(new URL('../patch/remote-ssh.patch.yml.tpl', import.meta.url), 'utf8').split('\r\n').join('\n')

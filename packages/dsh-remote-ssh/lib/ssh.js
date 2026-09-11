@@ -78,6 +78,52 @@ export function quoteArgv(argv) {
 const MULTIPLEXING_UNSUPPORTED = process.platform === 'win32'
 
 
+
+/**
+ * The probe script this transport runs on a candidate host.
+ *
+ * Exported because the classification below is the plugin's one decision about
+ * whether a host can be driven at all, and it is worth testing against the output
+ * a real non-POSIX shell produces without needing a wire to produce it.
+ */
+export const PROBE_SCRIPT = [
+  'printf "uname=%s\\n" "$(uname -s 2>/dev/null || echo unknown)"',
+  'if command -v bash >/dev/null 2>&1; then printf "shell=%s\\n" "$(command -v bash)"; else printf "shell=%s\\n" "$(command -v sh || echo sh)"; fi',
+  'if command -v rg >/dev/null 2>&1; then printf "rg=%s\\n" "$(command -v rg)"; fi',
+  'if command -v realpath >/dev/null 2>&1; then printf "realpath=1\\n"; else printf "realpath=0\\n"; fi',
+  'if stat -Lc %s . >/dev/null 2>&1; then printf "stat=gnu\\n"; elif stat -Lf %z . >/dev/null 2>&1; then printf "stat=bsd\\n"; else printf "stat=none\\n"; fi',
+  'if printf aGk= | base64 -d >/dev/null 2>&1; then printf "base64d=-d\\n"; elif printf aGk= | base64 -D >/dev/null 2>&1; then printf "base64d=-D\\n"; fi',
+  'printf "home=%s\\n" "$HOME"',
+  'printf "user=%s\\n" "$(id -un 2>/dev/null || echo unknown)"',
+].join('\n')
+
+/**
+ * Classify one probe transcript into the host facts later operations branch on.
+ *
+ * An answer with no `uname` line is NOT a host with unknown facts; it is a host
+ * that did not answer the question, which is what {@link nonPosixHost} reports.
+ * @param text - the remote shell's stdout.
+ * @returns the discovered facts, `platform: 'unknown'` when the shell answered nothing usable.
+ */
+export function parseProbeOutput(text) {
+  const facts = { platform: 'unknown', shell: 'sh', rg: undefined, realpath: false, stat: 'none', base64d: undefined, home: undefined, user: undefined }
+  for (const line of text.split('\n')) {
+    const index = line.indexOf('=')
+    if (index <= 0) continue
+    const key = line.slice(0, index)
+    const value = line.slice(index + 1)
+    if (key === 'uname') facts.platform = value === 'Darwin' ? 'darwin' : value === 'Linux' ? 'linux' : value.toLowerCase()
+    else if (key === 'shell') facts.shell = value
+    else if (key === 'rg') facts.rg = value
+    else if (key === 'realpath') facts.realpath = value === '1'
+    else if (key === 'stat') facts.stat = value
+    else if (key === 'base64d') facts.base64d = value
+    else if (key === 'home') facts.home = value
+    else if (key === 'user') facts.user = value
+  }
+  return facts
+}
+
 /**
  * The refusal a non-POSIX SSH server earns.
  *
@@ -89,7 +135,7 @@ const MULTIPLEXING_UNSUPPORTED = process.platform === 'win32'
  * @param cause - the underlying transport failure, when there was one.
  * @returns the error to throw.
  */
-function nonPosixHost(destination, cause) {
+export function nonPosixHost(destination, cause) {
   return new SshTransportError(
     `${destination} does not answer as a POSIX host. Remote workspaces drive the far side with a POSIX shell (Linux, macOS, BSD); a Windows OpenSSH server answers with cmd.exe or PowerShell, and WSL is not reached by default. Point the plugin at a POSIX machine, or expose that machine's WSL sshd on its own port.`,
     cause === undefined ? {} : { cause },
@@ -282,42 +328,14 @@ export class SshTransport {
    * @returns the discovered facts.
    */
   async probeOnce(options) {
-    const script = [
-      'printf "uname=%s\\n" "$(uname -s 2>/dev/null || echo unknown)"',
-      'if command -v bash >/dev/null 2>&1; then printf "shell=%s\\n" "$(command -v bash)"; else printf "shell=%s\\n" "$(command -v sh || echo sh)"; fi',
-      'if command -v rg >/dev/null 2>&1; then printf "rg=%s\\n" "$(command -v rg)"; fi',
-      'if command -v realpath >/dev/null 2>&1; then printf "realpath=1\\n"; else printf "realpath=0\\n"; fi',
-      'if stat -Lc %s . >/dev/null 2>&1; then printf "stat=gnu\\n"; elif stat -Lf %z . >/dev/null 2>&1; then printf "stat=bsd\\n"; else printf "stat=none\\n"; fi',
-      'if printf aGk= | base64 -d >/dev/null 2>&1; then printf "base64d=-d\\n"; elif printf aGk= | base64 -D >/dev/null 2>&1; then printf "base64d=-D\\n"; fi',
-      'printf "home=%s\\n" "$HOME"',
-      'printf "user=%s\\n" "$(id -un 2>/dev/null || echo unknown)"',
-    ].join('\n')
-    // A non-POSIX host (Windows OpenSSH, whose default shell is cmd.exe or
-    // PowerShell) fails this script rather than answering it, and the raw shell
-    // diagnostic names nothing a user can act on. Both shapes — a non-zero exit
-    // and a silent unrecognised answer — collapse into one refusal that says what
-    // the plugin actually requires.
+    const script = PROBE_SCRIPT
     let text
     try {
       text = await this.runChecked(script, options)
     } catch (error) {
       throw nonPosixHost(this.destination, error)
     }
-    const facts = { platform: 'unknown', shell: 'sh', rg: undefined, realpath: false, stat: 'none', base64d: undefined, home: undefined, user: undefined }
-    for (const line of text.split('\n')) {
-      const index = line.indexOf('=')
-      if (index <= 0) continue
-      const key = line.slice(0, index)
-      const value = line.slice(index + 1)
-      if (key === 'uname') facts.platform = value === 'Darwin' ? 'darwin' : value === 'Linux' ? 'linux' : value.toLowerCase()
-      else if (key === 'shell') facts.shell = value
-      else if (key === 'rg') facts.rg = value
-      else if (key === 'realpath') facts.realpath = value === '1'
-      else if (key === 'stat') facts.stat = value
-      else if (key === 'base64d') facts.base64d = value
-      else if (key === 'home') facts.home = value
-      else if (key === 'user') facts.user = value
-    }
+    const facts = parseProbeOutput(text)
     if (facts.platform === 'unknown') throw nonPosixHost(this.destination)
     if (facts.stat === 'none') {
       throw new SshTransportError(`${this.destination}: this host has no usable \`stat\`; a POSIX shell with coreutils or BSD userland is required`)

@@ -35,6 +35,35 @@ one.
   names, command output) is untrusted data by definition.
 - **A malicious local user.** SSE/agent-tool privileges are assumed.
 
+## The SSH channel
+
+The plugin does not implement cryptography and does not proxy the protocol: it
+drives the **real `ssh` binary**, so the channel is exactly the one your OpenSSH
+client negotiates — `sntrup761x25519-sha512` / `curve25519-sha256` key exchange,
+`chacha20-poly1305@openssh.com` or AES-GCM, and the server's host key verified
+against your `known_hosts`. There is no unencrypted or fallback path, and no
+second implementation that could disagree with your client's policy.
+
+What the plugin guarantees about that channel, and how:
+
+| Property | How it holds |
+|---|---|
+| Host key is verified | `StrictHostKeyChecking=accept-new` by default: a new host is trusted once, and a **changed** key is always refused. `yes` is available; `no` never appears in the source, and the unit suite asserts it. |
+| Known hosts are yours | The system `known_hosts` is used unless you pass an explicit `UserKnownHostsFile`. The plugin never points ssh at `/dev/null`. |
+| Keys stay yours | Authentication uses your SSH agent and `~/.ssh/config`; the plugin stores no key material. An explicit `-i` is paired with `IdentitiesOnly=yes` so an agent key cannot silently win. |
+| No agent forwarding | No `-A`, no `ForwardAgent`, no destination constraints to weaken. The unit suite asserts no forwarding or agent option is ever assembled. |
+| No tunnels | The plugin opens only exec channels. No `-L`, `-R`, `-D`, or `-W`, ever. |
+| A password never touches an argv vector | `sshpass -e` reads it from the child's environment, so it cannot appear in `ps` output on the host. It is stored only in `remotes.json` (mode `0600`), never in the session, the log, or the model's context. |
+| The socket is private | The multiplexing socket lives in a directory created `0700` under the harness home; its path is shortened when the platform limit would be exceeded. |
+| Remote commands are not confined | By design, and reported as such: see the threat model. The SSH account's own permissions are the boundary. |
+
+**The one hop this does not protect.** The connect form travels from your browser
+to the harness over the harness's own HTTP API. Bind the harness to loopback (the
+default, `127.0.0.1`) and prefer keys over passwords: on that hop a password is
+plain HTTP, while a key never makes the trip at all. Reaching the harness from
+another machine over an untrusted network is a harness-level concern, not
+something this plugin can fix.
+
 ## Design rules that keep it honest
 
 1. SSH stays a **transport detail**. Nothing above the provider seams can tell

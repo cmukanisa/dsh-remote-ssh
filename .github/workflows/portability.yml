@@ -99,3 +99,19 @@ jobs:
       - uses: ./.github/actions/setup-harness
       - name: Windows-specific transport expectations
         run: node test/windows-client.test.mjs
+
+  portability-gate:
+    name: portability-gate
+    # Stable check name for branch protection: a matrix job's name changes with
+    # the matrix, this one does not, so `main` can require exactly one context
+    # per workflow instead of every expansion of every matrix.
+    if: always()
+    needs: [node-matrix, shell, yaml, absolute-paths, windows-client]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: |
+          echo "::error::a required job failed, was cancelled, or was skipped"
+          exit 1
+      - run: echo "every required job passed"
