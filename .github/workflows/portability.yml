@@ -40,6 +40,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The home the action prepares is what makes the installer's own
+      # requirement checks satisfiable: it needs a profiles directory and the
+      # harness module tree reachable from the install location.
+      - uses: ./.github/actions/setup-harness
       - name: install.sh must be POSIX sh, not bash
         run: |
           set -eu
@@ -50,13 +57,31 @@ jobs:
           set -eu
           # dash is the strictest common POSIX shell; a bashism fails here.
           dash -n install.sh
-      - name: The installer must be idempotent
+      - name: install.sh must install for real, and only once
         run: |
           set -eu
-          export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          mkdir -p "$DSH_HOME/profiles/web"
-          node install.mjs --dry-run
-          node install.mjs --dry-run
+          # The shell script is the entry point a user pipes into `sh`, so this
+          # exercises IT rather than install.mjs: a real install into a throwaway
+          # home, twice, with the managed block still appearing exactly once.
+          export DSH_HOME="$RUNNER_TEMP/shell-home"
+          mkdir -p "$DSH_HOME/profiles/web" "$DSH_HOME/profiles/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules/@deepseek-ai" "$DSH_HOME/profiles/node_modules/@deepseek-ai"
+          sh ./install.sh --dsh-home "$DSH_HOME" > "$RUNNER_TEMP/first.log" 2>&1 || { cat "$RUNNER_TEMP/first.log"; exit 1; }
+          test -f "$DSH_HOME/profiles/plugins/dsh-remote-ssh/lib/registry.js"
+          grep -q 'remote-ssh.enabled = true' "$RUNNER_TEMP/first.log"
+          sh ./install.sh --dsh-home "$DSH_HOME" > /dev/null 2>&1
+          test "$(grep -c '# >>> dsh-remote-ssh' "$DSH_HOME/cordis.patch.yml")" = "1"
+
+      - name: A home without the harness module tree is refused, not half-written
+        run: |
+          set -eu
+          BARE="$RUNNER_TEMP/bare-home"
+          mkdir -p "$BARE/profiles/web"
+          if node install.mjs --dsh-home "$BARE" > "$RUNNER_TEMP/bare.log" 2>&1; then
+            echo "::error::the installer accepted a home its packages could not import from"; exit 1
+          fi
+          grep -q 'requirement' "$RUNNER_TEMP/bare.log"
+          test ! -d "$BARE/profiles/plugins/dsh-remote-ssh"
 
   yaml:
     name: composition template

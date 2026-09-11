@@ -694,7 +694,6 @@ async function main() {
   // end with the harness home exactly as it was found.
   const transaction = options.dryRun ? undefined : Transaction.begin(context)
   let enabled
-  let verified = true
   try {
     phase(options.dryRun ? 'installing (dry run — nothing is written)' : 'installing')
     installPackages(options, context)
@@ -703,8 +702,7 @@ async function main() {
 
     if (!options.dryRun) {
       phase('verifying')
-      verified = await verifyAll(context, { enabled })
-      if (!verified) throw new VerificationError('one or more checks above did not pass')
+      if (!(await verifyAll(context, { enabled }))) throw new VerificationError('one or more checks above did not pass')
     }
     transaction?.commit()
   } catch (error) {
@@ -721,12 +719,13 @@ async function main() {
     throw error
   }
 
+  // There is no "verification failed" branch here: a failed verification throws
+  // inside the transaction, so this point is only ever reached with a proven
+  // install. Saying otherwise would be dead code that reads as a real case.
   line()
   rule()
   if (options.dryRun) {
     line(`${cyan(bold('Dry run.'))} Nothing was written; every check above passed. A real run would leave the plugin ${enabled === true ? 'enabled' : 'switched off'}.`)
-  } else if (!verified) {
-    line(`${red(bold('Installed, but verification failed.'))} See the ${red(glyph.fail)} rows above; nothing is active until they pass.`)
   } else if (enabled === true) {
     line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} Reload the harness page, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}.`)
   } else {
@@ -734,7 +733,6 @@ async function main() {
     line(`  ${glyph.arrow} ${bold('Settings')} ${glyph.arrow} ${bold('Plugins')} ${glyph.arrow} ${bold('"Workspaces distants (SSH)"')} ${glyph.arrow} click ${bold('"Désactivé"')}, or run ${cyan('node install.mjs --enable')}`)
   }
   line()
-  if (!verified) process.exitCode = 1
 }
 
 main().catch((error) => {
