@@ -82,6 +82,7 @@ The installer is idempotent and makes exactly three changes:
 | `--enable` | activate immediately instead of waiting for the Settings toggle |
 | `--link` | symlink the packages instead of copying (development) |
 | `--dry-run` | report what would change, touch nothing |
+| `--no-color` | plain output (also honours `NO_COLOR`) |
 | `--uninstall` | remove the packages and the composition rows |
 | `--dsh-home DIR` | target a different harness home |
 
@@ -265,6 +266,13 @@ Plusieurs serveurs peuvent être connectés en même temps et restent disponible
 pour toutes les sessions.
 
 ---
+
+## Author
+
+Built by **Christian Kasse** ([@cmukanisa](https://github.com/cmukanisa)) — see the
+[contributors](https://github.com/cmukanisa/dsh-remote-ssh/graphs/contributors)
+for everyone who has helped. Contributions are welcome; start with
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

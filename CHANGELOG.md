@@ -6,6 +6,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-11
+
+### Changed
+
+- **The installer reports what it did, as a report.** A header that says what this
+  is and who wrote it, one aligned row per change with the path it touched, the
+  prerequisites as their own section, and a closing line that says what to do
+  next. Colour and box-drawing are used only when the terminal supports them:
+  `NO_COLOR`, `TERM=dumb`, `--no-color`, and a non-terminal stdout all fall back
+  to plain text with an ASCII glyph set. The `install.sh` downloader prints one
+  compact line and leaves the banner to `install.mjs`, so a `curl | sh` run shows
+  one header rather than two.
+
+### Fixed
+
+- **A re-install claimed to be waiting for an activation it already had.** Once
+  `remote-ssh.enabled` existed, every later run printed "waiting for activation"
+  regardless of its value — a working installation read as a broken one. The
+  installer now reads the stored value and reports it, and a `--dry-run` says
+  plainly that nothing was written.
+- **`--help` printed the harness line**, which belongs to a real run.
+
+### Added
+
+- `--no-color`, and a `tailscale` row in the prerequisites when the CLI is
+  present.
+- An **Author** section in the README crediting Christian Kasse (@cmukanisa).
+
 ## [0.2.0] — 2026-09-11
 
 ### Added

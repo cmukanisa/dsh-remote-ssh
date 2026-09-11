@@ -13,12 +13,17 @@
  *     namespace has no section yet, so the harness ASKS to be activated instead
  *     of silently gaining SSH access.
  *
+ * The output is the operator's only window into those three changes, so it is
+ * built as a small report rather than a stream of lines: a header that says what
+ * this is, one aligned row per change, and a closing line that says what to do
+ * next. Colour and box-drawing are used only when the terminal supports them.
+ *
  * Usage:
- *   node install.mjs [--enable] [--link] [--dry-run] [--dsh-home DIR] [--uninstall]
+ *   node install.mjs [--enable] [--link] [--dry-run] [--no-color] [--dsh-home DIR] [--uninstall]
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
@@ -27,6 +32,109 @@ const PACKAGES = ['dsh-remote-ssh', 'dsh-remote-ssh-ui']
 const SETTINGS_NAMESPACE = 'remote-ssh'
 const BEGIN_MARKER = '# >>> dsh-remote-ssh (managed block — re-running the installer replaces it) >>>'
 const END_MARKER = '# <<< dsh-remote-ssh <<<'
+const AUTHOR = 'Christian Kasse (cmukanisa)'
+const HOMEPAGE = 'https://github.com/cmukanisa/dsh-remote-ssh'
+
+// ── presentation ─────────────────────────────────────────────────────────────
+
+/**
+ * Whether stdout can carry escape sequences.
+ *
+ * `NO_COLOR` is honoured because it is the cross-tool convention, `TERM=dumb`
+ * because that is how a build log says so, and `--no-color` because a person
+ * piping the output into a document should not have to know either.
+ */
+const COLOR = process.argv.includes('--no-color') ? false : process.stdout.isTTY === true && process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb'
+
+/** Whether the terminal can be expected to render box-drawing characters. */
+const UNICODE = process.platform !== 'win32' || process.env.WT_SESSION !== undefined || process.env.TERM_PROGRAM !== undefined
+
+/** Wrap text in an SGR sequence, or return it untouched when colour is off. */
+const paint = (code) => (text) => (COLOR ? `\u001B[${code}m${text}\u001B[0m` : text)
+const brand = paint('38;5;209') // the warm accent the header is built around
+const bold = paint('1')
+const dim = paint('2')
+const green = paint('32')
+const yellow = paint('33')
+const red = paint('31')
+const cyan = paint('36')
+
+/** The glyph set, with an ASCII fallback for terminals that cannot draw boxes. */
+const glyph = UNICODE
+  ? { ok: '✓', fail: '✗', info: '•', warn: '!', arrow: '→', bullet: '·', rule: '─', diamond: '◆', tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' }
+  : { ok: '+', fail: 'x', info: '-', warn: '!', arrow: '->', bullet: '.', rule: '-', diamond: '*', tl: '+', tr: '+', bl: '+', br: '+', h: '-', v: '|' }
+
+/** Visible width of the report, clamped so it reads well in a narrow pane and a wide one. */
+const WIDTH = Math.min(96, Math.max(64, process.stdout.columns ?? 84))
+const INDENT = '  '
+
+/** Strip escape sequences, so padding is computed on what the eye sees. */
+function visible(text) {
+  return text.replace(/\u001B\[[0-9;]*m/g, '')
+}
+
+/** Print one line, with the shared indent. */
+function line(text = '') {
+  process.stdout.write(`${text === '' ? '' : `${INDENT}${text}`}\n`)
+}
+
+/** Print one aligned `status label ······· detail` row. */
+function step(status, label, detail) {
+  const mark = status === 'ok' ? green(glyph.ok) : status === 'warn' ? yellow(glyph.warn) : status === 'fail' ? red(glyph.fail) : dim(glyph.info)
+  const left = `${mark} ${label.padEnd(8)}`
+  const dots = Math.max(2, WIDTH - INDENT.length - visible(left).length - detail.length - 3)
+  line(`${left}${dim(` ${glyph.bullet.repeat(dots)} `)}${dim(detail)}`)
+}
+
+/** A horizontal rule that spans the report width. */
+function rule() {
+  process.stdout.write(`${INDENT}${dim(glyph.rule.repeat(WIDTH - INDENT.length))}\n`)
+}
+
+/** A dim section label. */
+function section(title) {
+  process.stdout.write(`\n${INDENT}${bold(title)}\n`)
+}
+
+/**
+ * The header: what this is, whose it is, and where it is going.
+ * @param destination - the harness home being written to.
+ */
+function header(destination, options = {}) {
+  const version = readVersion()
+  const rows = [
+    `${brand(glyph.diamond)} ${bold(`dsh-remote-ssh`)} ${dim(`v${version}`)}`,
+    dim('Remote SSH workspaces for the DeepSeek Harness'),
+    `${dim('by')} ${brand(AUTHOR)} ${dim(`· ${HOMEPAGE}`)}`,
+  ]
+  const inner = Math.min(WIDTH - 4, Math.max(...rows.map((row) => visible(row).length)) + 2)
+  process.stdout.write(`${INDENT}${dim(glyph.tl + glyph.h.repeat(inner + 2) + glyph.tr)}\n`)
+  for (const row of rows) {
+    const padding = ' '.repeat(Math.max(0, inner - visible(row).length))
+    process.stdout.write(`${INDENT}${dim(glyph.v)} ${row}${padding} ${dim(glyph.v)}\n`)
+  }
+  process.stdout.write(`${INDENT}${dim(glyph.bl + glyph.h.repeat(inner + 2) + glyph.br)}\n`)
+  if (options.showHarness === false) return
+  line()
+  line(`${dim('harness'.padEnd(9))}${cyan(destination)}`)
+}
+
+/** The shipped version, so the report never disagrees with the package. */
+function readVersion() {
+  try {
+    return JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8')).version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
+/** Show a path relative to the harness home when that is shorter, else absolute. */
+function shorten(path, home) {
+  const rel = relative(home, path)
+  return rel === '' || rel.startsWith('..') ? path : rel
+}
+
+// ── flags ────────────────────────────────────────────────────────────────────
 
 /** Parse the small flag surface; no dependency, no config file. */
 function parseArgs(argv) {
@@ -37,6 +145,7 @@ function parseArgs(argv) {
     else if (flag === '--link') options.link = true
     else if (flag === '--dry-run') options.dryRun = true
     else if (flag === '--uninstall') options.uninstall = true
+    else if (flag === '--no-color') continue
     else if (flag === '--dsh-home') { index += 1; options.dshHome = argv[index] }
     else if (flag === '--help' || flag === '-h') { printHelp(); process.exit(0) }
     else throw new Error(`unknown option: ${flag}`)
@@ -46,35 +155,29 @@ function parseArgs(argv) {
 
 /** Print the flag reference. */
 function printHelp() {
-  process.stdout.write(`dsh-remote-ssh installer
-
-  --enable        activate the plugin immediately (default: leave it off so the
-                  harness asks you to enable it in Settings -> Plugins)
-  --link          symlink the packages instead of copying them (development)
-  --dry-run       report what would change, touch nothing
-  --uninstall     remove the packages, the composition rows, and the setting
-  --dsh-home DIR  harness home to install into (default: $DSH_HOME or ~/.dsh)
-`)
+  header(process.env.DSH_HOME ?? join(homedir(), '.dsh'), { showHarness: false })
+  section('options')
+  const rows = [
+    ['--enable', 'activate immediately, instead of waiting for the Settings switch'],
+    ['--link', 'symlink the packages instead of copying them (development)'],
+    ['--dry-run', 'report what would change, touch nothing'],
+    ['--uninstall', 'remove the packages, the composition rows, and the setting'],
+    ['--no-color', 'plain output'],
+    ['--dsh-home DIR', 'harness home to install into (default: $DSH_HOME or ~/.dsh)'],
+  ]
+  for (const [flag, description] of rows) line(`${brand(flag.padEnd(15))} ${dim(description)}`)
+  line()
+  line(`${dim('The installer is idempotent: re-running it replaces its own block.')}`)
+  line()
 }
 
-/** Resolve the harness home the same way the launcher does. */
-function resolveDshHome(explicit) {
-  if (explicit !== undefined) return resolve(explicit)
-  if (process.env.DSH_HOME !== undefined && process.env.DSH_HOME !== '') return resolve(process.env.DSH_HOME)
-  return join(homedir(), '.dsh')
-}
-
-/** A short, human-facing report line. */
-function report(action, detail) {
-  process.stdout.write(`  ${action.padEnd(9)} ${detail}\n`)
-}
+// ── filesystem ───────────────────────────────────────────────────────────────
 
 /** Require a value the installation cannot proceed without. */
 function requirePath(path, description) {
   if (!existsSync(path)) throw new Error(`${description} not found at ${path}`)
   return path
 }
-
 
 /**
  * Read a document that may not exist yet.
@@ -130,19 +233,23 @@ function composeBlock(pluginsDir) {
   return `${BEGIN_MARKER}\n${body.trimEnd()}\n${END_MARKER}`
 }
 
+// ── the three changes ────────────────────────────────────────────────────────
+
 /**
  * Install the two packages and return the directory they landed in.
  * @param options - parsed flags.
  * @param pluginsDir - destination root.
+ * @param dshHome - harness home, for the short path the report prints.
  * @returns the destination root.
  */
-function installPackages(options, pluginsDir) {
+function installPackages(options, pluginsDir, dshHome) {
   mkdirSync(pluginsDir, { recursive: true })
   for (const name of PACKAGES) {
     const source = requirePath(join(HERE, 'packages', name), `package ${name}`)
     const destination = join(pluginsDir, name)
+    const shown = shorten(destination, dshHome)
     if (options.dryRun) {
-      report('would', `${options.link ? 'link' : 'copy'} ${source} -> ${destination}`)
+      step('info', 'would', `${options.link ? 'link' : 'copy'} ${name} ${glyph.arrow} ${shown}`)
       continue
     }
     rmSync(destination, { recursive: true, force: true })
@@ -151,10 +258,10 @@ function installPackages(options, pluginsDir) {
       // its bare `@deepseek-ai/dsh-*` imports from the SOURCE tree — which is why
       // `--link` only works for a checkout that sits under the profiles root.
       symlinkSync(source, destination, 'dir')
-      report('linked', destination)
+      step('ok', 'linked', `${name} ${glyph.arrow} ${dim(shown)}`)
     } else {
       cpSync(source, destination, { recursive: true })
-      report('copied', destination)
+      step('ok', 'copied', `${name} ${glyph.arrow} ${dim(shown)}`)
     }
   }
   return pluginsDir
@@ -165,26 +272,23 @@ function installPackages(options, pluginsDir) {
  * @param options - parsed flags.
  * @param patchPath - the home layer path.
  * @param pluginsDir - the directory the packages were installed into.
+ * @param dshHome - harness home, for the short path the report prints.
  */
-function installPatch(options, patchPath, pluginsDir) {
+function installPatch(options, patchPath, pluginsDir, dshHome) {
   const existing = readIfPresent(patchPath)
   const withoutBlock = stripBlock(existing)
   const base = isEmptyEntryList(withoutBlock) ? '# dsh home-level patch layer.\n[]\n' : withoutBlock
-  const next = `${base.trimEnd()}\n\n${composeBlock(pluginsDir)}\n`
+  const block = composeBlock(pluginsDir)
+  const rows = block.split('\n').filter((entry) => /^\s*-\s+id:/.test(entry)).length
   if (options.dryRun) {
-    report('would', `write ${patchPath} (${composeBlock(pluginsDir).split('\n').length} lines)`)
+    step('info', 'would', `write ${shorten(patchPath, dshHome)} ${dim(`(${block.split('\n').length} lines)`)}`)
     return
   }
   mkdirSync(dirname(patchPath), { recursive: true })
-  writeFileSync(patchPath, next)
-  report('patched', patchPath)
+  writeFileSync(patchPath, `${base.trimEnd()}\n\n${block}\n`)
+  step('ok', 'patched', `${shorten(patchPath, dshHome)} ${dim(`${rows} rows`)}`)
 }
 
-/**
- * Seed the settings section that the Plugins page renders as this plugin's card.
- * @param options - parsed flags.
- * @param settingsPath - `$DSH_HOME/settings.yaml`.
- */
 /**
  * Rewrite the namespace's `enabled` value inside an existing section.
  *
@@ -213,49 +317,77 @@ function setEnabledInSection(text, value) {
 }
 
 /**
- * Seed — or, with `--enable`, update — the settings section the Plugins card renders.
- * @param options - parsed flags.
- * @param settingsPath - `$DSH_HOME/settings.yaml`.
+ * The `enabled` value a stored section currently resolves to.
+ * @param text - the settings document.
+ * @returns true, false, or undefined when the section or the key is absent.
  */
-function installSettings(options, settingsPath) {
-  const existing = readIfPresent(settingsPath)
-  const hasSection = existing.split('\n').some((line) => line.startsWith(`${SETTINGS_NAMESPACE}:`))
-  if (hasSection) {
-    if (!options.enable) {
-      // The section is the user's answer to "activate me?"; a plain re-install
-      // must not overwrite it.
-      report('kept', `${settingsPath} already declares "${SETTINGS_NAMESPACE}"`)
-      return
-    }
-    const next = setEnabledInSection(existing, 'true')
-    if (options.dryRun) { report('would', `set "${SETTINGS_NAMESPACE}.enabled: true" in ${settingsPath}`); return }
-    writeFileSync(settingsPath, next)
-    report('enabled', `${settingsPath} (${SETTINGS_NAMESPACE}.enabled: true)`)
-    return
+function enabledInSection(text) {
+  const lines = text.split('\n')
+  const start = lines.findIndex((line) => line.startsWith(`${SETTINGS_NAMESPACE}:`))
+  if (start < 0) return undefined
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (lines[index].trim() !== '' && !/^\s/.test(lines[index])) break
+    const match = /^\s*enabled\s*:\s*(true|false)\s*$/.exec(lines[index])
+    if (match !== null) return match[1] === 'true'
   }
-  const section = `${SETTINGS_NAMESPACE}:\n  enabled: ${options.enable ? 'true' : 'false'}\n`
-  if (options.dryRun) {
-    report('would', `append "${SETTINGS_NAMESPACE}" to ${settingsPath}`)
-    return
-  }
-  mkdirSync(dirname(settingsPath), { recursive: true })
-  writeFileSync(settingsPath, `${existing.trimEnd()}\n${section}`)
-  report('seeded', `${settingsPath} (enabled: ${options.enable ? 'true' : 'false'})`)
+  return undefined
 }
 
 /**
- * Report the host prerequisites the runtime needs but cannot install.
- * @returns one line per prerequisite.
+ * Seed — or, with `--enable`, update — the settings section the Plugins card renders.
+ * @param options - parsed flags.
+ * @param settingsPath - `$DSH_HOME/settings.yaml`.
+ * @param dshHome - harness home, for the short path the report prints.
+ * @returns whether the plugin is enabled once this step has run.
  */
-function checkPrerequisites() {
-  const notes = []
+function installSettings(options, settingsPath, dshHome) {
+  const existing = readIfPresent(settingsPath)
+  const filename = shorten(settingsPath, dshHome)
+  const current = enabledInSection(existing)
+  if (current !== undefined) {
+    if (!options.enable) {
+      // The section is the user's answer to "activate me?"; a plain re-install
+      // must not overwrite it, and it must report that answer rather than
+      // claiming to be waiting for one it already has.
+      step('ok', 'kept', `${filename} ${dim(`enabled = ${current}`)}`)
+      return current
+    }
+    if (options.dryRun) { step('info', 'would', `set ${SETTINGS_NAMESPACE}.enabled = true in ${filename}`); return true }
+    writeFileSync(settingsPath, setEnabledInSection(existing, 'true'))
+    step('ok', 'enabled', `${filename} ${dim('enabled = true')}`)
+    return true
+  }
+  const enabled = options.enable === true
+  if (options.dryRun) {
+    step('info', 'would', `append ${SETTINGS_NAMESPACE} to ${filename} ${dim(`(enabled = ${enabled})`)}`)
+    return enabled
+  }
+  mkdirSync(dirname(settingsPath), { recursive: true })
+  writeFileSync(settingsPath, `${existing.trimEnd()}\n${SETTINGS_NAMESPACE}:\n  enabled: ${enabled}\n`)
+  step('ok', 'seeded', `${filename} ${dim(`enabled = ${enabled}`)}`)
+  return enabled
+}
+
+/**
+ * The prerequisites the runtime needs but cannot install, as report rows.
+ * @returns one `{status, label, detail}` per prerequisite.
+ */
+function prerequisites() {
+  const rows = []
   // `ssh -V` prints its banner on STDERR and exits 0, so the version comes from
   // the merged streams rather than from stdout alone.
   const banner = spawnSync('ssh', ['-V'], { encoding: 'utf8' }).stderr?.trim().split('\n')[0]
-  notes.push(banner === undefined || banner === '' ? 'ssh: NOT FOUND — install an OpenSSH client; nothing works without it' : `ssh: ${banner}`)
-  if (process.platform === 'win32') notes.push('windows: connection multiplexing is unavailable, so every call opens its own connection')
-  return notes
+  if (banner === undefined || banner === '') rows.push({ status: 'fail', label: 'ssh', detail: 'NOT FOUND — install an OpenSSH client; nothing works without it' })
+  else rows.push({ status: 'ok', label: 'ssh', detail: banner })
+  const tailscale = spawnSync('tailscale', ['version'], { encoding: 'utf8' })
+  const tailscaleVersion = `${tailscale.stdout ?? ''}${tailscale.stderr ?? ''}`.trim().split('\n')[0]
+  if (tailscale.error?.code === 'ENOENT') rows.push({ status: 'info', label: 'tailscale', detail: 'optional — absent, so only the OpenSSH transport is offered' })
+  else rows.push({ status: 'ok', label: 'tailscale', detail: tailscaleVersion.split(' ')[0] || 'present' })
+  if (process.platform === 'win32') rows.push({ status: 'info', label: 'windows', detail: 'no connection multiplexing: every call opens its own connection' })
+  return rows
 }
+
+// ── entry point ──────────────────────────────────────────────────────────────
 
 /** Entry point. */
 function main() {
@@ -266,21 +398,25 @@ function main() {
   const patchPath = join(dshHome, 'cordis.patch.yml')
   const settingsPath = join(dshHome, 'settings.yaml')
 
-  process.stdout.write(`dsh-remote-ssh -> ${dshHome}\n`)
+  header(dshHome)
 
   if (options.uninstall) {
+    section('removing')
     for (const name of PACKAGES) {
       const target = join(pluginsDir, name)
       if (!existsSync(target)) continue
-      if (options.dryRun) report('would', `remove ${target}`)
-      else { rmSync(target, { recursive: true, force: true }); report('removed', target) }
+      if (options.dryRun) step('info', 'would', `remove ${shorten(target, dshHome)}`)
+      else { rmSync(target, { recursive: true, force: true }); step('ok', 'removed', shorten(target, dshHome)) }
     }
     const current = readIfPresent(patchPath)
     if (current !== '') {
-      if (options.dryRun) report('would', `strip the managed block from ${patchPath}`)
-      else { writeFileSync(patchPath, `${stripBlock(current).trimEnd()}\n`); report('unpatched', patchPath) }
+      if (options.dryRun) step('info', 'would', `strip the managed block from ${shorten(patchPath, dshHome)}`)
+      else { writeFileSync(patchPath, `${stripBlock(current).trimEnd()}\n`); step('ok', 'restored', shorten(patchPath, dshHome)) }
     }
-    process.stdout.write('\nUninstalled. The profiles you already connected stay in remotes.json and their mirrors stay on disk.\n')
+    line()
+    rule()
+    line(`Uninstalled. The profiles you connected stay in ${cyan('remotes.json')}, and their mirrors stay on disk.`)
+    line()
     return
   }
 
@@ -291,24 +427,39 @@ function main() {
     throw new Error(`cannot read ${profilesDir}`)
   }
 
-  installPackages(options, pluginsDir)
-  installPatch(options, patchPath, pluginsDir)
-  installSettings(options, settingsPath)
+  section(options.dryRun ? 'dry run — nothing is written' : 'installing')
+  installPackages(options, pluginsDir, dshHome)
+  installPatch(options, patchPath, pluginsDir, dshHome)
+  const enabled = installSettings(options, settingsPath, dshHome)
 
-  process.stdout.write('\nPrerequisites\n')
-  for (const note of checkPrerequisites()) report('-', note)
+  section('prerequisites')
+  for (const row of prerequisites()) step(row.status, row.label, row.detail)
 
-  process.stdout.write(`\n${options.enable ? 'Installed and enabled.' : 'Installed, waiting for activation.'}\n`)
-  if (!options.enable) {
-    process.stdout.write(`Activate it in the harness: Settings -> Plugins -> "Workspaces distants (SSH)" -> click "Désactivé".\n`)
-    process.stdout.write(`Or set it now:  node install.mjs --enable\n`)
+  line()
+  rule()
+  if (options.dryRun) {
+    line(`${cyan(bold('Dry run.'))} Nothing was written. A real run would leave the plugin ${enabled === true ? 'enabled' : 'switched off, waiting for activation'}.`)
+  } else if (enabled === true) {
+    line(`${green(bold('Enabled.'))} Reload the harness page, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}.`)
+  } else {
+    line(`${yellow(bold('Activation required.'))} The plugin is installed and switched off, on purpose.`)
+    line()
+    line(`  ${glyph.arrow} ${bold('Settings')} ${glyph.arrow} ${bold('Plugins')} ${glyph.arrow} ${bold('"Workspaces distants (SSH)"')} ${glyph.arrow} click ${bold('"Désactivé"')}`)
+    line(`  ${glyph.arrow} or run ${cyan('node install.mjs --enable')}`)
   }
-  process.stdout.write('Then restart the harness (or reload the page) and open the workspace "+" menu.\n')
+  line()
 }
 
 try {
   main()
 } catch (error) {
-  process.stderr.write(`dsh-remote-ssh: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.stderr.write(`\n${INDENT}${red(glyph.fail)} ${red('dsh-remote-ssh:')} ${error instanceof Error ? error.message : String(error)}\n\n`)
   process.exit(1)
+}
+
+/** Resolve the harness home the same way the launcher does. */
+function resolveDshHome(explicit) {
+  if (explicit !== undefined) return resolve(explicit)
+  if (process.env.DSH_HOME !== undefined && process.env.DSH_HOME !== '') return resolve(process.env.DSH_HOME)
+  return join(homedir(), '.dsh')
 }

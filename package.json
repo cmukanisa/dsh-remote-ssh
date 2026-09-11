@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-ssh",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Remote SSH workspaces for the DeepSeek Harness — connect a host, pick a folder there, and drive the whole harness against it",
   "type": "module",

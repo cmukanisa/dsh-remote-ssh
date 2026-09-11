@@ -32,7 +32,7 @@ const install = (...args) => execFileSync(process.execPath, [join(ROOT, 'install
 
 const first = install()
 check('the packages are installed', existsSync(join(home, 'profiles', 'plugins', 'dsh-remote-ssh', 'lib', 'registry.js')) && existsSync(join(home, 'profiles', 'plugins', 'dsh-remote-ssh-ui', 'lib', 'client.js')))
-check('the installer reports the activation step', first.includes('Settings -> Plugins'), first.split('\n').filter((line) => line.includes('Activate')).join(''))
+check('the installer reports the activation step', first.includes('Workspaces distants (SSH)') && first.includes('install.mjs --enable'), first.split('\n').filter((line) => /Activation|Enabled/.test(line)).join(' | '))
 
 const patch = readFileSync(join(home, 'cordis.patch.yml'), 'utf8')
 check('the empty root was replaced by a list', !patch.includes('\n[]\n'), patch.split('\n').slice(0, 4).join(' | '))
@@ -54,6 +54,14 @@ check('re-running does not duplicate the setting', (readFileSync(join(home, 'set
 
 install('--enable')
 check('--enable flips the switch', /^remote-ssh:\n  enabled: true$/m.test(readFileSync(join(home, 'settings.yaml'), 'utf8')))
+
+// A re-install must report the operator's stored answer, not a default. A plain
+// re-run after --enable used to say "waiting for activation", which is how a
+// working installation looked broken.
+const afterEnable = install()
+check('a re-install reports the plugin as enabled', /Enabled\./.test(afterEnable) && !/Activation required/.test(afterEnable), afterEnable.split('\n').filter((line) => /Enabled|Activation/.test(line)).join(' | '))
+const afterDisable = install('--dry-run')
+check('a dry run leaves the enabled state alone', /enabled = true/.test(afterDisable), afterDisable.split('\n').filter((line) => /enabled =/.test(line)).join(' | '))
 
 const dry = install('--uninstall', '--dry-run')
 check('--dry-run changes nothing', dry.includes('would') && existsSync(join(home, 'profiles', 'plugins', 'dsh-remote-ssh')))
