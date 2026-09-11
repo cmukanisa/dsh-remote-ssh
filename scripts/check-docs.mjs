@@ -11,7 +11,7 @@
  * Usage: node scripts/check-docs.mjs
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const LOCALES = ['en', 'fr', 'zh']
@@ -60,10 +60,13 @@ for (const file of ['index.html', ...LOCALES.map((locale) => `${locale}/index.ht
 check('no page pulls a third-party resource', thirdParty.length === 0, thirdParty.join(', '))
 
 // Every internal link target must exist, so the site has no dead ends.
+//
+// `fileURLToPath`, not `URL.pathname`: on Windows the pathname keeps the leading
+// slash of a drive-letter URL ("/D:/a/…"), and every target then looks missing.
 const targets = new Set()
 for (const file of ['index.html', ...LOCALES.map((locale) => `${locale}/index.html`)]) {
   for (const match of read(file).matchAll(/href="(\.{1,2}\/[^"#]*)"/g)) {
-    const resolved = new URL(match[1], `file://${ROOT}docs/${file}`).pathname
+    const resolved = fileURLToPath(new URL(match[1], pathToFileURL(`${ROOT}docs/${file}`)))
     targets.add(resolved.endsWith('/') ? `${resolved}index.html` : resolved)
   }
 }
