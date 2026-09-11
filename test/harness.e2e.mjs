@@ -10,8 +10,6 @@
  *   node test/harness.e2e.mjs --base http://127.0.0.1:3099 --token TOKEN \
  *     [--host 127.0.0.1] [--port 22] [--user dsh] [--key ~/.ssh/id_ed25519]
  */
-import { existsSync, readFileSync } from 'node:fs'
-
 const args = process.argv.slice(2)
 const option = (name, fallback) => {
   const index = args.indexOf(`--${name}`)

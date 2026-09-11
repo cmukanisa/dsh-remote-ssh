@@ -75,6 +75,25 @@ function requirePath(path, description) {
   return path
 }
 
+
+/**
+ * Read a document that may not exist yet.
+ *
+ * Reading and catching `ENOENT` rather than testing `existsSync` first is not a
+ * style preference: a check followed by a use is a race, and the two documents
+ * this installer edits are exactly the ones a concurrent edit would corrupt.
+ * @param path - the file to read.
+ * @returns its text, or an empty string when it is absent.
+ */
+function readIfPresent(path) {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return ''
+    throw error
+  }
+}
+
 /**
  * Remove this plugin's managed block from a patch document.
  * @param text - the current document.
@@ -148,7 +167,7 @@ function installPackages(options, pluginsDir) {
  * @param pluginsDir - the directory the packages were installed into.
  */
 function installPatch(options, patchPath, pluginsDir) {
-  const existing = existsSync(patchPath) ? readFileSync(patchPath, 'utf8') : ''
+  const existing = readIfPresent(patchPath)
   const withoutBlock = stripBlock(existing)
   const base = isEmptyEntryList(withoutBlock) ? '# dsh home-level patch layer.\n[]\n' : withoutBlock
   const next = `${base.trimEnd()}\n\n${composeBlock(pluginsDir)}\n`
@@ -199,7 +218,7 @@ function setEnabledInSection(text, value) {
  * @param settingsPath - `$DSH_HOME/settings.yaml`.
  */
 function installSettings(options, settingsPath) {
-  const existing = existsSync(settingsPath) ? readFileSync(settingsPath, 'utf8') : ''
+  const existing = readIfPresent(settingsPath)
   const hasSection = existing.split('\n').some((line) => line.startsWith(`${SETTINGS_NAMESPACE}:`))
   if (hasSection) {
     if (!options.enable) {
@@ -256,10 +275,10 @@ function main() {
       if (options.dryRun) report('would', `remove ${target}`)
       else { rmSync(target, { recursive: true, force: true }); report('removed', target) }
     }
-    if (existsSync(patchPath)) {
-      const next = stripBlock(readFileSync(patchPath, 'utf8')).trimEnd()
+    const current = readIfPresent(patchPath)
+    if (current !== '') {
       if (options.dryRun) report('would', `strip the managed block from ${patchPath}`)
-      else { writeFileSync(patchPath, `${next}\n`); report('unpatched', patchPath) }
+      else { writeFileSync(patchPath, `${stripBlock(current).trimEnd()}\n`); report('unpatched', patchPath) }
     }
     process.stdout.write('\nUninstalled. The profiles you already connected stay in remotes.json and their mirrors stay on disk.\n')
     return

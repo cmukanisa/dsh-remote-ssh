@@ -61,11 +61,7 @@ export class RemoteShellExecutor extends SandboxBashExecutor {
       .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
       .join('\n')
     const script = exports === '' ? spec.command : `${exports}\n${spec.command}`
-    const prefix = transport.usesPassword ? [transport.sshpassBin, '-e'] : []
-    return {
-      argv: [...prefix, transport.sshBin, ...transport.baseArgs(), transport.destination, transport.wrap(script, world.remotePath)],
-      env: transport.usesPassword ? { SSHPASS: world.profile.password } : {},
-    }
+    return { argv: transport.commandArgv(transport.wrap(script, world.remotePath)), env: transport.childEnv() }
   }
 
   /**

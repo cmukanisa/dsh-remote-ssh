@@ -60,12 +60,11 @@ export class RemoteSubprocessRuntime extends LocalSubprocessRuntime {
       .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
       .join('\n')
     const script = [exports, missingProgramScript(program, transport.destination), `cd ${shellQuote(world.remotePath)} || exit 66`, `exec ${[target, ...rest].map(shellQuote).join(' ')}`].filter((line) => line !== '').join('\n')
-    const prefix = transport.usesPassword ? [transport.sshpassBin, '-e'] : []
     return super.spawn({
       ...spec,
-      argv: [...prefix, transport.sshBin, ...transport.baseArgs(), transport.destination, transport.wrap(script)],
+      argv: transport.commandArgv(transport.wrap(script)),
       cwd: spec.cwd,
-      env: transport.usesPassword ? { ...spec.env, SSHPASS: world.profile.password } : spec.env,
+      env: { ...spec.env, ...transport.childEnv() },
     })
   }
 }

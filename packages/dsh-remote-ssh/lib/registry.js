@@ -21,26 +21,12 @@
  *
  * @module dsh-remote-ssh/registry
  */
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, chmodSync } from 'node:fs'
 import { dirname, join, resolve as joinPath, sep } from 'node:path'
 import { SshTransport, SshTransportError, shellQuote } from './ssh.js'
-
-/** Filesystem shape of one persisted connection profile. */
-const PROFILE_SCHEMA = {
-  id: z.string().required(),
-  label: z.string().required(),
-  host: z.string().required(),
-  port: z.natural().default(22),
-  user: z.string().default(''),
-  identityFile: z.string().default(''),
-  password: z.string().default(''),
-  strictHostKeyChecking: z.union([z.const('accept-new'), z.const('yes'), z.const('no')]).default('accept-new'),
-  remoteRoot: z.string().default(''),
-  extraOptions: z.array(z.string()).default([]),
-  createdAt: z.string().required(),
-}
+import { TRANSPORTS, isTailnetAddress, peerFor, tailnetPreflight, tailnetStatus } from './tailscale.js'
 
 /** Validated configuration of the registry row. */
 export const Config = z.object({
@@ -101,7 +87,11 @@ function remoteJoin(base, name) {
 
 /** A filesystem-safe id derived from a profile label or host. */
 function slugify(value, fallback) {
-  const slug = String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  // Two anchored single-character strips, not `^-+|-+$`: the run-collapsing
+  // replace above guarantees at most one leading and one trailing dash, and an
+  // alternation of two quantified patterns is a polynomial backtracking hazard on
+  // a long input (CodeQL js/polynomial-redos).
+  const slug = String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   return slug === '' ? fallback : slug.slice(0, 32)
 }
 
@@ -207,6 +197,10 @@ export class RemoteRegistry extends Service {
         hasPassword: profile.password !== '',
         strictHostKeyChecking: profile.strictHostKeyChecking,
         remoteRoot: profile.remoteRoot,
+        transport: profile.transport ?? 'openssh',
+        // Reported, never inferred: this badge says where the destination lives,
+        // it does not change how the connection is made.
+        tailnet: isTailnetAddress(profile.host),
         mountRoot: this.mountRoot(profile.id),
         createdAt: profile.createdAt,
         platform: facts?.platform,
@@ -246,11 +240,16 @@ export class RemoteRegistry extends Service {
     const base = slugify(label, 'remote')
     let id = base
     for (let index = 2; this.profiles.some((entry) => entry.id === id); index += 1) id = `${base}-${index}`
+    const transport = input.transport ?? 'openssh'
+    if (!TRANSPORTS.includes(transport)) throw new RemoteProfileError(`unknown transport "${transport}"; expected one of ${TRANSPORTS.join(', ')}`, 'invalid-profile')
+    // The durable shape: `path`-free (a profile names a host, not a folder), and
+    // every field a string or a number so the document stays hand-editable.
     const profile = {
       id,
       label,
       host,
       port,
+      transport,
       user,
       identityFile: String(input.identityFile ?? '').trim(),
       password: String(input.password ?? ''),
@@ -281,6 +280,10 @@ export class RemoteRegistry extends Service {
     if (patch.password !== undefined) profile.password = String(patch.password)
     if (patch.strictHostKeyChecking !== undefined) profile.strictHostKeyChecking = patch.strictHostKeyChecking
     if (patch.remoteRoot !== undefined) profile.remoteRoot = normalizeRemotePath(patch.remoteRoot)
+    if (patch.transport !== undefined) {
+      if (!TRANSPORTS.includes(patch.transport)) throw new RemoteProfileError(`unknown transport "${patch.transport}"; expected one of ${TRANSPORTS.join(', ')}`, 'invalid-profile')
+      profile.transport = patch.transport
+    }
     if (patch.extraOptions !== undefined) profile.extraOptions = Array.isArray(patch.extraOptions) ? patch.extraOptions.map(String) : []
     this.transports.delete(id)
     this.facts.delete(id)
@@ -326,8 +329,13 @@ export class RemoteRegistry extends Service {
    * @returns a report describing success, the discovered platform, and the login directory.
    */
   async test(id) {
+    const profile = this.require(id)
     const transport = this.transport(id)
     transport.facts = undefined
+    // A tailnet peer that is offline fails as a connect timeout, which reads as a
+    // broken server. Asking Tailscale first turns that into an answer.
+    const blocked = await this.tailnetObstacle(profile)
+    if (blocked !== undefined) return { ok: false, error: blocked, code: 'tailnet-offline' }
     try {
       const facts = await transport.probe()
       this.facts.set(id, facts)
@@ -336,6 +344,31 @@ export class RemoteRegistry extends Service {
       this.facts.delete(id)
       return { ok: false, error: error instanceof Error ? error.message : String(error), code: error instanceof SshTransportError ? 'ssh-failed' : 'probe-failed' }
     }
+  }
+
+  /**
+   * The local tailnet, for the connect form's peer picker.
+   *
+   * Read-only and best effort: a machine without Tailscale reports unavailable
+   * rather than failing, which is what lets the browser half render the section
+   * only when there is something to show.
+   * @returns the tailnet state, or an unavailable result with the reason.
+   */
+  async tailnet() {
+    return await tailnetStatus({})
+  }
+
+  /**
+   * Why a profile cannot be reached at all, when that is knowable without trying.
+   * @param profile - the profile about to be probed.
+   * @returns the message to report, or undefined when the attempt should proceed.
+   */
+  async tailnetObstacle(profile) {
+    if (!isTailnetAddress(profile.host)) return undefined
+    const tailnet = await this.tailnet()
+    if (!tailnet.available) return `"${profile.host}" looks like a tailnet destination, but Tailscale is not usable here: ${tailnet.error}`
+    if (tailnet.backendState !== 'Running') return `"${profile.host}" looks like a tailnet destination, but the local Tailscale backend is ${tailnet.backendState}.`
+    return tailnetPreflight(profile.host, peerFor(tailnet, profile.host))
   }
 
   /** Directory holding one profile's mirror tree. */

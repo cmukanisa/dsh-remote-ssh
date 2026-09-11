@@ -27,11 +27,6 @@ import { SshTransportError, shellQuote } from './ssh.js'
 /** Bytes sampled for the binary (NUL) check, matching the local backend's window. */
 const BINARY_SAMPLE_BYTES = 8192
 
-/** Remote absolute path of a target key, or undefined for a local target. */
-function remotePathOfKey(key) {
-  return typeof key === 'string' && key.startsWith('ssh://') ? key : undefined
-}
-
 /** Abort check shared by every remote operation. */
 function throwIfAborted(signal, verb) {
   if (signal?.aborted) throw new FsError(`${verb} aborted`, 'FS_ABORTED')
@@ -230,11 +225,9 @@ export class RemoteFileSystem extends SandboxedFileSystem {
   async remoteProbe(profileId, remotePath, follow, signal) {
     const transport = this.registry.transport(profileId)
     const facts = await transport.probe({ signal })
-    const test = follow ? ['if [ -d "$p" ]; then t=directory; elif [ -f "$p" ]; then t=file; else t=other; fi', 'read size mtime inode mode <<EOF', follow ? `$(stat -Lc '%s %Y %i %a' -- "$p" 2>/dev/null || echo "0 0 0 0")` : '$(true)', 'EOF'].join('\n') : null
     const statArgs = facts.stat === 'gnu' ? `-${follow ? 'L' : ''}c '%s|%Y|%i|%a'` : `-${follow ? 'L' : ''}f '%z|%m|%i|%Lp'`
     const typeTest = follow ? 'if [ -d "$p" ]; then t=directory; elif [ -f "$p" ]; then t=file; else t=other; fi' : 'if [ -L "$p" ]; then t=symlink; elif [ -d "$p" ]; then t=directory; elif [ -f "$p" ]; then t=file; else t=other; fi'
     const script = [`p=${shellQuote(remotePath)}`, 'if [ ! -e "$p" ] && [ ! -L "$p" ]; then exit 3; fi', typeTest, `meta=$(stat ${statArgs} -- "$p" 2>/dev/null) || meta="0|0|0|0"`, 'printf "%s\\t%s\\n" "$t" "$meta"'].join('\n')
-    void test
     let result
     try {
       result = await transport.run(script, { signal, maxBytes: 64 * 1024 })
@@ -498,9 +491,10 @@ export class RemoteFileSystem extends SandboxedFileSystem {
   async remoteWrite(target, content, expected, signal, sandboxPolicy) {
     throwIfAborted(signal, 'write')
     const checked = await this.checkedRemoteTarget(target, sandboxPolicy, 'write')
-    const { profile, remotePath, mirror } = checked
-    const transport = this.registry.transport(profile.id)
-    const directory = await this.requireRemoteParent(profile.id, remotePath, target.displayPath, 'write', signal)
+    const { profile, remotePath } = checked
+    // The parent is verified for its own sake, not for its value: a mirror exists
+    // locally even when the far side's parent directory does not.
+    await this.requireRemoteParent(profile.id, remotePath, target.displayPath, 'write', signal)
     const existing = await this.remoteProbe(profile.id, remotePath, true, signal)
     if (existing !== undefined && existing.type !== 'file') throw new FsError(`cannot write "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
     if (expected?.kind === 'replaceIfVersion') {
@@ -514,7 +508,7 @@ export class RemoteFileSystem extends SandboxedFileSystem {
     const result = await this.runFor(target, script, { stdin: Buffer.from(content, 'utf8'), signal, verb: 'write' })
     if (result.code !== 0) throw new FsError(`cannot write "${target.displayPath}": ${result.stderr.trim() || `remote write exited ${result.code}`}`, 'FS_IO_ERROR')
     this.invalidate(profile.id)
-    const after = await this.remoteProbe(profile.id, mirror === undefined ? remotePath : remotePath, true, signal)
+    const after = await this.remoteProbe(profile.id, remotePath, true, signal)
     return {
       operation: existing === undefined ? 'create' : 'update',
       version: after?.version ?? FsVersion(`missing:${remotePath}`),
