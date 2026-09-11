@@ -10,29 +10,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **The installer reports what it did, as a report.** A header that says what this
-  is and who wrote it, one aligned row per change with the path it touched, the
-  prerequisites as their own section, and a closing line that says what to do
+- **Installing activates the plugin.** It used to install dormant and ask you to
+  flip the switch in Settings; installing it *is* the decision. `--keep-off`
+  installs it dormant for a rollout where activation is audited separately, and
+  `--enable` is the only thing that overrides an existing `remote-ssh.enabled`.
+- **The run is a transaction, and anything short of a fully verified install is
+  rolled back.** The composition layer, the settings document, and any package
+  already installed are snapshotted before the first write; a failed copy, a failed
+  write, or a failed check restores every path and says *Installation cancelled.
+  Nothing was left half-applied.* A half-installed plugin is worse than none: the
+  loader would boot a profile whose composition disables the shipped providers
+  without registering the replacements.
+- **The output is a report, in four visible phases** — `checking`, `installing`,
+  `verifying`, `done` — with one aligned row per check and a dotted leader to its
+  result, a header that credits the author, and a closing line that says what to do
   next. Colour and box-drawing are used only when the terminal supports them:
-  `NO_COLOR`, `TERM=dumb`, `--no-color`, and a non-terminal stdout all fall back
-  to plain text with an ASCII glyph set. The `install.sh` downloader prints one
-  compact line and leaves the banner to `install.mjs`, so a `curl | sh` run shows
-  one header rather than two.
+  `NO_COLOR`, `TERM=dumb`, `--no-color`, and a non-terminal stdout all fall back to
+  plain text and an ASCII glyph set. `install.sh` prints one compact line and
+  leaves the banner to `install.mjs`, so `curl | sh` shows one header, not two.
+
+### Added
+
+- **Requirement checks before any write**, each with the command that fixes it:
+  Node in the harness's range, an OpenSSH client, a harness home, a writable
+  destination, and the harness module tree reachable from where the packages will
+  sit. Tailscale is reported as available or absent.
+- **Post-install verification**, including a real `import()` of `registry.js` from
+  the installed path — exactly what the Cordis loader does at the next boot. A
+  truncated copy, a lost export, or an unreachable `@deepseek-ai/dsh-*` dependency
+  now fails in the installer, where the message can still be actionable.
+- `--no-color`, a `tailscale` row in the prerequisites, and an **Author** section
+  in the README crediting Christian Kasse (@cmukanisa).
 
 ### Fixed
 
 - **A re-install claimed to be waiting for an activation it already had.** Once
   `remote-ssh.enabled` existed, every later run printed "waiting for activation"
-  regardless of its value — a working installation read as a broken one. The
-  installer now reads the stored value and reports it, and a `--dry-run` says
-  plainly that nothing was written.
+  regardless of its value, so a working installation read as broken. The installer
+  reads the stored value and reports it.
 - **`--help` printed the harness line**, which belongs to a real run.
-
-### Added
-
-- `--no-color`, and a `tailscale` row in the prerequisites when the CLI is
-  present.
-- An **Author** section in the README crediting Christian Kasse (@cmukanisa).
 
 ## [0.2.0] — 2026-09-11
 

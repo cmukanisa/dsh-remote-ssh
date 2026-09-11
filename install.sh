@@ -7,8 +7,9 @@
 # durable change (packages, composition rows, activation setting) is made there,
 # idempotently, so this script is a downloader and nothing else.
 #
-# Flags are forwarded: --enable, --link, --dry-run, --no-color, --uninstall,
-# --dsh-home DIR.
+# Installing ACTIVATES the plugin. Flags are forwarded: --keep-off (install
+# dormant), --enable, --link, --dry-run, --no-color, --uninstall, --dsh-home DIR.
+# Anything short of a fully verified install is rolled back by install.mjs.
 set -eu
 
 REPO="${DSH_REMOTE_SSH_REPO:-cmukanisa/dsh-remote-ssh}"
