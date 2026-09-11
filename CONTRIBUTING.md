@@ -126,9 +126,15 @@ packages/dsh-remote-ssh-ui/     browser half (localized) + the Remote namespace
 patch/remote-ssh.patch.yml.tpl  the composition rows the installer writes
 install.mjs, install.sh         installation
 docs/                           the GitHub Pages site, fr/en/zh, no build step
-scripts/                        the static gates CI runs
+docs/assets/social/             the link-preview and announcement cards
+scripts/                        the static gates CI runs, plus social-cards.mjs
 test/                           the suites above
 ```
+
+The cards under `docs/assets/social/` are generated, not hand-drawn:
+`node scripts/social-cards.mjs` renders them from the wording in that script with a headless
+Chrome (`--theme light|dark`, `--out`, `--scale`). Change the copy there and re-run it rather
+than editing a PNG.
 
 Client copy is **locale-owned**: every displayed string is a key in the `fr`/`en`/`zh` dictionaries
 registered with `ctx.locale`, and `scripts/check-syntax.mjs` fails if a key is missing from a locale,
