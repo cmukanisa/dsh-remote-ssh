@@ -9,7 +9,7 @@
 //   node scripts/social-cards.mjs [--out docs/assets/social] [--scale 2] [--theme light|dark]
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -443,7 +443,7 @@ const CARDS = [
         <div class="col node">
           <div class="kind">That machine</div>
           <div class="name">Your server</div>
-          <div class="path"><b>/home/deploy/app</b> · full tool access</div>
+          <div class="path"><b>/srv/app</b> · full tool access</div>
         </div>
       </div>
       ${foot('MIT · EN / FR / 中文')}
@@ -458,7 +458,7 @@ const CARDS = [
         <div class="cols" style="margin-top:52px">
           <div class="col node">
             <div class="kind">Mirrored locally</div>
-            <div class="path" style="margin-top:14px">$DSH_HOME/remotes/web/<br><b>home/deploy/app</b></div>
+            <div class="path" style="margin-top:14px">$DSH_HOME/remotes/web/<br><b>srv/app</b></div>
           </div>
           <div class="col" style="flex:0 0 170px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px">
             <div class="arrow" style="font-size:21px">◀──▶</div>
@@ -466,7 +466,7 @@ const CARDS = [
           </div>
           <div class="col node">
             <div class="kind">Real location</div>
-            <div class="path" style="margin-top:14px">ssh://deploy@prod-web-01<br><b>/home/deploy/app</b></div>
+            <div class="path" style="margin-top:14px">ssh://deploy@prod-web-01<br><b>/srv/app</b></div>
           </div>
         </div>
         <div class="chips" style="margin-top:34px">
@@ -507,7 +507,7 @@ const CARDS = [
                 <div class="tabs"><span>Local</span><span class="on">Remote</span></div>
                 <div class="row">
                   <span class="dot"></span>
-                  <span><span class="who">prod-web-01</span><span class="where">deploy@10.0.4.11 · /home/deploy/app</span></span>
+                  <span><span class="who">prod-web-01</span><span class="where">deploy@10.0.4.11 · /srv/app</span></span>
                   <span class="badge">OpenSSH</span>
                 </div>
                 <div class="row">
@@ -630,8 +630,10 @@ function main() {
   const chrome = findChrome();
   THEME = options.theme;
   mkdirSync(options.out, { recursive: true });
-  const staging = path.join(tmpdir(), `dsh-social-${process.pid}`);
-  mkdirSync(staging, { recursive: true });
+  // mkdtempSync creates the directory with a random name and 0700 permissions;
+  // a predictable name under the shared temp directory would be a symlink
+  // target for anyone else on the machine.
+  const staging = mkdtempSync(path.join(tmpdir(), 'dsh-social-'));
 
   for (const card of CARDS) {
     const png = render(card, chrome, options, staging);
