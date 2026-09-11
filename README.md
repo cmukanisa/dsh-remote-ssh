@@ -1,6 +1,10 @@
-# dsh-remote-ssh
+# dsh-remote-ssh plugin
 
-**Remote SSH workspaces for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).**
+**A community plugin for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`):
+remote SSH workspaces.**
+
+Not affiliated with, endorsed by, or supported by DeepSeek. "DeepSeek Harness" is a trademark of
+DeepSeek, used here only to describe what this plugin is built on.
 
 Connect a server once, pick a folder there, and work in it: the agent reads, writes,
 edits, lists, searches, and runs shell commands on the far side with every tool it
@@ -101,6 +105,16 @@ your answer, and `--enable` is the only thing that overrides it.
   configure a password.
 - Optional: `ripgrep` on the server, for the `glob` and `grep` tools.
 
+## Documentation
+
+The user guide is published in three languages — **English**, **Français**, **中文** — and the page
+follows your browser's language:
+
+> **<https://cmukanisa.github.io/dsh-remote-ssh/>**
+
+The same content lives in [`docs/`](docs/) in this repository, as plain HTML with no build step.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on the plugin itself.
+
 ## Activate
 
 It is already active after installing. The switch stays useful for turning it
@@ -128,6 +142,27 @@ edits, lists, searches, and runs commands on the server.
 
 Several servers can be connected at once; each gets its own mirror, and the
 profile chips switch between them in the same dialog.
+
+## Work that outlives the harness
+
+The agent loop runs inside the harness, so closing it ends the turn. What **can** keep working is the
+command, and detaching it is the whole trick: the plugin writes a small launcher on the server, starts
+it under its own session (`setsid`, or `nohup` where that is unavailable), and sends its output to a log
+file there.
+
+- **Close the harness whenever you like.** The remote process keeps running.
+- **Come back and see it.** Settings → Plugins lists every run with its live state — running, finished
+  with its exit code, or gone — and its latest output.
+- **Stop it when you want.** A running entry has a **Stop** button; the whole process group is
+  signalled, so children stop with it. *Forget finished* clears the records.
+
+One durable record per run lives in `$DSH_HOME/remotes-sessions.json`, shared by every session, so a
+harness that restarts re-attaches to work it never watched.
+
+```sh
+# what the panel reads, from the server's point of view
+ls ~/.dsh-remote/run/          # one .sh, .pid, .started, .log, .status per run
+```
 
 ## Updating
 
@@ -300,16 +335,6 @@ boot where the browser bundle and the Remote namespace are exercised. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
-
-## Documentation
-
-The user guide is published in three languages — **English**, **Français**, **中文** — and the page
-follows your browser's language:
-
-> **<https://cmukanisa.github.io/dsh-remote-ssh/>**
-
-The same content lives in [`docs/`](docs/) in this repository, as plain HTML with no build step.
-[CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on the plugin itself.
 
 ## Guide rapide (français)
 

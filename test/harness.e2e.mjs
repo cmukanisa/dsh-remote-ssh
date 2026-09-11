@@ -75,7 +75,7 @@ async function checkClientBundle() {
   const index = await (await fetch(`${base}/`, { headers: { cookie: cookieHeader() } })).text()
   const marker = '__DSH_BOOT__'
   const at = index.indexOf(marker)
-  check('the boot payload declares the client module', at >= 0 && index.includes('@deepseek-ai/dsh-remote-ssh-ui'))
+  check('the boot payload declares the client module', at >= 0 && index.includes('dsh-remote-ssh-ui'))
   if (at < 0) return
   const raw = index.slice(at)
   const start = raw.indexOf('{')
@@ -87,13 +87,13 @@ async function checkClientBundle() {
   }
   if (end < 0) { check('the boot payload is parseable', false); return }
   const data = JSON.parse(raw.slice(start, end))
-  const row = (data.entries ?? []).find((entry) => entry.id === '@deepseek-ai/dsh-remote-ssh-ui')
+  const row = (data.entries ?? []).find((entry) => entry.id === 'dsh-remote-ssh-ui')
   check('the client module exposes a served URL', typeof row?.url === 'string', row?.url ?? '(absent)')
   if (row?.url === undefined) return
   const bundle = await fetch(new URL(row.url, base), { headers: { cookie: cookieHeader() } })
   const text = await bundle.text()
   check('the client bundle is served', bundle.status === 200 && text.includes('__ModuleLoader__.load'), `HTTP ${bundle.status}, ${text.length} bytes`)
-  check('the served bundle registers the expected module id', text.includes('"@deepseek-ai/dsh-remote-ssh-ui"'))
+  check('the served bundle registers the expected module id', text.includes('"dsh-remote-ssh-ui"'))
 }
 
 try {

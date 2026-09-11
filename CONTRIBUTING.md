@@ -1,5 +1,15 @@
 # Contributing to dsh-remote-ssh
 
+`dsh-remote-ssh` is a **community plugin**. It is not part of the DeepSeek Harness
+repository, it does not use DeepSeek's npm scope, and it is not affiliated with or
+endorsed by DeepSeek. The upstream project states that it cannot accept external
+pull requests at the moment, so nothing here is destined for it: this repository is
+the project.
+
+Two guidelines from upstream shape how it presents itself, and both are respected
+here: descriptive text may say the plugin is *built on DeepSeek Harness*, and
+project naming uses the short **DSH** form.
+
 Thanks for wanting to help. This plugin reaches into a running agent's filesystem
 and shell, so the bar is not "it works on my machine" — it is "it fails visibly
 everywhere else". The guide below is mostly about that.
@@ -51,6 +61,7 @@ between a contributor's machine and a user's.
 | Windows client | `node test/windows-client.test.mjs` | nothing | no multiplexing promise on Windows; `ControlPath` shortening holds for Windows-shaped paths |
 | Tailscale | `node test/tailscale.test.mjs` | nothing | tailnet parsing, address classification, peer lookup, preflight, and the two transports as argv. Synthetic fixtures only: a test file is public, so it must never carry anyone's tailnet |
 | Filesystem E2E | `npm run test:e2e` | a real SSH host | read/write/edit/list/stat/byte windows/URI parsing/sandbox fences, the shell executor, subprocess routing, **and local passthrough** |
+| Detached work | `node test/sessions.test.mjs` | a real SSH host | a command keeps running after the client that started it is gone, a new reader sees its state, and it can be stopped |
 | Harness E2E | `npm run test:harness` | a running `dsh` + a real SSH host | the composed plugin: browser bundle served, `sshWorkspace` Remote namespace answering, a remote folder becoming a workspace |
 | Windows server | `node test/windows-server.expect.mjs` | a Windows SSH host | the refusal is explicit and actionable |
 
@@ -110,7 +121,7 @@ shell, so a review should look for exactly that.
 ### Layout
 
 ```
-packages/dsh-remote-ssh/        host: ssh.js tailscale.js registry.js fs.js shell.js subprocess.js
+packages/dsh-remote-ssh/        host: ssh.js tailscale.js registry.js fs.js shell.js subprocess.js sessions.js
 packages/dsh-remote-ssh-ui/     browser half (localized) + the Remote namespace
 patch/remote-ssh.patch.yml.tpl  the composition rows the installer writes
 install.mjs, install.sh         installation

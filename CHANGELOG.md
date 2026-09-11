@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-09-11
+
+### Added
+
+- **Detached remote work**: a command can keep running on the host after you close
+  the harness. Work started through the plugin is written as a small launcher on
+  the server, detached with `setsid`/`nohup`, and logged there; one durable record
+  per run lives in `$DSH_HOME/remotes-sessions.json`. Reopening the harness shows
+  every run's **live state** — running, finished with its exit code, or gone — with
+  its latest output, and each one can be **stopped** with a process-group signal.
+  The Settings card grows a *Remote work* panel: live rows, a Stop per running run,
+  Refresh, and Forget-finished.
+  - Verified end to end against a real host: start a 150-second command, kill the
+    harness process, confirm the remote process is still alive, restart the
+    harness, and read it back as *running* — then stop it.
+  - The **agent loop** cannot outlive the harness: the model turn runs in-process.
+    What survives is the work it started, which is what the panel shows.
+- `setsid` capability detection in the host probe, so a run gets its own signalable
+  process group when the host can give it one.
+
+### Fixed
+
+- **A row exported without `default` failed the whole composition at boot.** The
+  sessions module exported its class only as a named export, so the loader saw a
+  module namespace with no `apply`. The installer's verification now imports every
+  row from where the loader will and asserts the shape the loader requires — a
+  function or an object with `apply` — which catches this before a boot does.
+
 ## [Unreleased]
 
 ## [Unreleased]

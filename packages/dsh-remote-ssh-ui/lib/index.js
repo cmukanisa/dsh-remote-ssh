@@ -17,8 +17,11 @@ import { RemoteSshController } from './remote.js'
 
 export { NAMESPACE, RemoteSshController, markRemote } from './remote.js'
 
-/** Cordis service injection: the endpoint is useless until the registry exists. */
-export const inject = ['remoteSsh']
+/**
+ * Cordis service injection: the endpoint is useless until the registry exists,
+ * and the work panel needs the detached-work registry beside it.
+ */
+export const inject = ['remoteSsh', 'remoteSessions']
 
 /**
  * Mount the Remote controller.

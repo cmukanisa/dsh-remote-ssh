@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dsh-remote-ssh — guide d'utilisation</title>
+<title>DeepSeek Harness Remote Workspace — Travaillez sur un serveur distant comme s'il était local</title>
 <meta name="description" content="Connectez un serveur en SSH, choisissez-y un dossier et travaillez dedans : l'agent lit, écrit, modifie, liste, cherche et exécute des commandes sur la machine distante avec tous ses outils.">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 <header class="site">
   <div class="inner">
-    <a class="brand" href="../" style="color:inherit">dsh<span>-</span>remote<span>-</span>ssh</a>
+    <a class="brand" href="../" style="color:inherit">DeepSeek Harness <span>Remote Workspace</span></a>
     <nav class="langs">
       <a href="../fr/" aria-current="page" onclick="remember('fr')">Français</a>
       <a href="../en/" onclick="remember('en')">English</a>
@@ -21,7 +21,8 @@
 
 <main>
   <div class="hero">
-    <h1>Travaillez sur un serveur distant comme s'il était local</h1>
+    <h1>DeepSeek Harness Remote Workspace</h1>
+    <p class="headline">Travaillez sur un serveur distant comme s'il était local</p>
     <p class="lead">Connectez un hôte en SSH, choisissez-y un dossier, et travaillez dedans. L'agent
       lit, écrit, modifie, liste, cherche et exécute des commandes sur la machine distante avec tous
       les outils qu'il a déjà. La connexion est partagée par toutes les sessions, plusieurs serveurs
@@ -145,6 +146,23 @@
   </section>
 
   <section>
+    <h2>Un travail qui survit au harness</h2>
+    <p>La boucle de l'agent s'exécute dans le harness : le fermer met fin au tour. Ce qui peut continuer,
+      c'est la <strong>commande</strong>, et tout le secret est de la détacher : le plugin écrit un petit lanceur
+      sur le serveur, le démarre dans sa propre session, et envoie sa sortie dans un fichier de log là-bas.</p>
+    <ul>
+      <li><strong>Fermez le harness quand vous voulez.</strong> Le processus distant continue de tourner.</li>
+      <li><strong>Revenez et constatez.</strong> Paramètres → Plugins liste chaque exécution avec son état en
+        direct — en cours, terminé avec son code de sortie, ou disparu — et sa dernière sortie.</li>
+      <li><strong>Arrêtez-la quand vous voulez.</strong> Une entrée active a un bouton Arrêter ; tout le groupe
+        de processus est signalé, donc les enfants aussi.</li>
+    </ul>
+    <p class="note">Rien à configurer : un travail lancé dans un workspace distant est détaché par défaut, et un
+      enregistrement durable par exécution vit dans <code>$DSH_HOME/remotes-sessions.json</code>, partagé par
+      toutes les sessions.</p>
+  </section>
+
+  <section>
     <h2>Mettre à jour</h2>
     <p>Relancez l'installeur. Il réécrit son propre bloc de composition, ce qui suffit à prendre une
       nouvelle version <strong>sans redémarrer le harness</strong> :</p>
@@ -203,6 +221,7 @@
     <a href="https://github.com/cmukanisa/dsh-remote-ssh">dépôt</a> ·
     <a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">versions</a>
   </div>
+  <div class="inner" style="margin-top:0.6rem">Sans affiliation avec DeepSeek. « DeepSeek Harness » est une marque de DeepSeek, utilisée ici uniquement pour décrire ce sur quoi ce plugin est construit.</div>
 </footer>
 
 <script>

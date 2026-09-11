@@ -12,10 +12,11 @@
  * - **Browser surface + Remote namespace** — `dsh-remote-ssh-ui` provides the
  *   workspace chooser, the sidebar launcher, and the Settings card.
  *
- * @module @deepseek-ai/dsh-remote-ssh
+ * @module dsh-remote-ssh
  */
 export { SshTransport, SshTransportError, shellQuote, quoteArgv, sharedControlDirectory } from './ssh.js'
 export { RemoteRegistry, RemoteProfileError, SETTINGS_NAMESPACE } from './registry.js'
+export { RemoteSessionStore, RemoteSessionError, DEFAULT_TAIL_BYTES } from './sessions.js'
 export { RemoteFileSystem, applyLiteralEdit, atomicWriteScript, isUnder } from './fs.js'
 export { RemoteShellExecutor } from './shell.js'
 export { RemoteSubprocessRuntime } from './subprocess.js'

@@ -18,7 +18,7 @@ import { parse } from 'yaml'
 const AT = fileURLToPath(new URL('../patch/remote-ssh.patch.yml.tpl', import.meta.url))
 
 /** Rows the template must insert. */
-const REQUIRED_INSERTS = ['remote-ssh', 'fs-remote-ssh', 'shell-remote-ssh', 'subprocess-remote-ssh', 'remote-ssh-ui']
+const REQUIRED_INSERTS = ['remote-ssh', 'fs-remote-ssh', 'shell-remote-ssh', 'subprocess-remote-ssh', 'remote-ssh-sessions', 'remote-ssh-ui']
 /** Shipped providers the template must disable, so the plugin's providers can register. */
 const REQUIRED_DISABLES = ['fs-sandbox', 'bash-sandbox', 'subprocess']
 
