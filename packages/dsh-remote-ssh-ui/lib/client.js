@@ -26,6 +26,183 @@ window.__ModuleLoader__.load({
 		 * so the Gateway resolves each endpoint through its source-mode discovery.
 		 */
 		const NAMESPACE = "sshWorkspace";
+		/** Locale namespace for every string this plugin shows. */
+		const NS = "@deepseek-ai/dsh-remote-ssh-ui";
+
+		/**
+		 * Display text, in the three locales the harness resolves from the
+		 * browser's language. Keys are flat and the values take `{name}`-style
+		 * placeholders, which is the shape ctx.locale expects.
+		 */
+		const dictionaries = {
+			en: {
+				"dialog.title": "Add a workspace",
+				"tab.local": "This computer",
+				"tab.remote": "Remote server (SSH)",
+				"launcher.label": "Remote server",
+				"action.close": "Close",
+				"action.cancel": "Cancel",
+				"action.use": "Use this folder",
+				"action.adding": "Adding…",
+				"action.connect": "Connect",
+				"action.connecting": "Connecting…",
+				"action.addServer": "+ Server",
+				"action.systemPicker": "System picker…",
+				"action.chooseFolder": "Choose a folder…",
+				"action.newFolder": "+ New folder",
+				"action.create": "Create",
+				"action.forget": "Forget",
+				"state.loading": "Loading…",
+				"state.emptyFolder": "(empty folder)",
+				"field.label": "Name (optional)",
+				"field.host": "Host",
+				"field.port": "Port",
+				"field.user": "User",
+				"field.key": "Private key (local path)",
+				"field.password": "Password (optional)",
+				"field.transport": "Transport",
+				"placeholder.label": "prod",
+				"placeholder.host": "10.0.0.4, node.tailnet.ts.net",
+				"placeholder.user": "root",
+				"placeholder.key": "~/.ssh/id_ed25519",
+				"placeholder.folderName": "folder-name",
+				"error.hostRequired": "The host is required.",
+				"error.refused": "connection refused",
+				"tailnet.peers": "From Tailscale ({n} peers, MagicDNS)",
+				"tailnet.legend": "● online · ○ offline · ⚡ Tailscale SSH available",
+				"transport.opensshHint": "Plain ssh. On a MagicDNS name or a 100.x address the traffic already goes over WireGuard.",
+				"transport.tailscaleHint": "Goes through the Tailscale client: MagicDNS resolution, access governed by tailnet ACLs, host key verified against the coordination server.",
+				"transport.openssh": "OpenSSH",
+				"transport.tailscale": "Tailscale SSH",
+				"connect.note": "Key authentication uses your SSH agent and ~/.ssh/config. A password needs sshpass and is stored only in $DSH_HOME/remotes.json (chmod 600).",
+				"local.systemChooser": "This deployment uses the system folder chooser.",
+				"local.browseHint": "or pick from the tree below",
+				"footer.remoteFolder": "Remote folder: {path}",
+				"footer.localFolder": "Local folder: {path}",
+				"mirror.local": "Local mirror: {path}",
+				"disabled.notice": "Remote SSH is switched off. Enable it in Settings → Plugins → “remote-ssh”.",
+				"settings.title": "Remote workspaces (SSH)",
+				"settings.description": "Connect servers, pick a remote folder, and work in it with every tool.",
+				"settings.enabled": "Enabled",
+				"settings.disabled": "Disabled",
+				"settings.empty": "No server connected yet."
+			},
+			fr: {
+				"dialog.title": "Ajouter un workspace",
+				"tab.local": "Cet ordinateur",
+				"tab.remote": "Serveur distant (SSH)",
+				"launcher.label": "Serveur distant",
+				"action.close": "Fermer",
+				"action.cancel": "Annuler",
+				"action.use": "Utiliser ce dossier",
+				"action.adding": "Ajout…",
+				"action.connect": "Se connecter",
+				"action.connecting": "Connexion…",
+				"action.addServer": "＋ Serveur",
+				"action.systemPicker": "Sélecteur du système…",
+				"action.chooseFolder": "Choisir un dossier…",
+				"action.newFolder": "＋ Nouveau dossier",
+				"action.create": "Créer",
+				"action.forget": "Oublier",
+				"state.loading": "Chargement…",
+				"state.emptyFolder": "(dossier vide)",
+				"field.label": "Nom (optionnel)",
+				"field.host": "Hôte",
+				"field.port": "Port",
+				"field.user": "Utilisateur",
+				"field.key": "Clé privée (chemin local)",
+				"field.password": "Mot de passe (optionnel)",
+				"field.transport": "Transport",
+				"placeholder.label": "prod",
+				"placeholder.host": "10.0.0.4, node.tailnet.ts.net",
+				"placeholder.user": "root",
+				"placeholder.key": "~/.ssh/id_ed25519",
+				"placeholder.folderName": "nom-du-dossier",
+				"error.hostRequired": "L'hôte est obligatoire.",
+				"error.refused": "connexion refusée",
+				"tailnet.peers": "Depuis Tailscale ({n} pairs, MagicDNS)",
+				"tailnet.legend": "● en ligne · ○ hors ligne · ⚡ Tailscale SSH disponible",
+				"transport.opensshHint": "ssh classique. Sur un nom MagicDNS ou une adresse 100.x, le trafic passe déjà par WireGuard.",
+				"transport.tailscaleHint": "Passe par le client Tailscale : résolution MagicDNS, accès par les ACL du tailnet, clé d'hôte vérifiée auprès du serveur de coordination.",
+				"transport.openssh": "OpenSSH",
+				"transport.tailscale": "Tailscale SSH",
+				"connect.note": "L'authentification par clé utilise votre agent SSH et votre ~/.ssh/config. Le mot de passe nécessite sshpass et n'est stocké que dans $DSH_HOME/remotes.json (chmod 600).",
+				"local.systemChooser": "Ce déploiement utilise le sélecteur de dossiers du système.",
+				"local.browseHint": "ou choisissez dans l'arborescence ci-dessous",
+				"footer.remoteFolder": "Dossier distant : {path}",
+				"footer.localFolder": "Dossier local : {path}",
+				"mirror.local": "Miroir local : {path}",
+				"disabled.notice": "Le module SSH distant est désactivé. Activez-le dans Paramètres → Plugins → « remote-ssh ».",
+				"settings.title": "Workspaces distants (SSH)",
+				"settings.description": "Connectez des serveurs, choisissez un dossier distant et travaillez dedans avec tous les outils.",
+				"settings.enabled": "Activé",
+				"settings.disabled": "Désactivé",
+				"settings.empty": "Aucun serveur connecté pour l'instant."
+			},
+			zh: {
+				"dialog.title": "添加工作区",
+				"tab.local": "本机",
+				"tab.remote": "远程服务器（SSH）",
+				"launcher.label": "远程服务器",
+				"action.close": "关闭",
+				"action.cancel": "取消",
+				"action.use": "使用此文件夹",
+				"action.adding": "添加中…",
+				"action.connect": "连接",
+				"action.connecting": "连接中…",
+				"action.addServer": "＋ 服务器",
+				"action.systemPicker": "系统选择器…",
+				"action.chooseFolder": "选择文件夹…",
+				"action.newFolder": "＋ 新建文件夹",
+				"action.create": "创建",
+				"action.forget": "移除",
+				"state.loading": "加载中…",
+				"state.emptyFolder": "（空文件夹）",
+				"field.label": "名称（可选）",
+				"field.host": "主机",
+				"field.port": "端口",
+				"field.user": "用户",
+				"field.key": "私钥（本地路径）",
+				"field.password": "密码（可选）",
+				"field.transport": "传输方式",
+				"placeholder.label": "prod",
+				"placeholder.host": "10.0.0.4, node.tailnet.ts.net",
+				"placeholder.user": "root",
+				"placeholder.key": "~/.ssh/id_ed25519",
+				"placeholder.folderName": "文件夹名称",
+				"error.hostRequired": "必须填写主机。",
+				"error.refused": "连接被拒绝",
+				"tailnet.peers": "来自 Tailscale（{n} 个节点，MagicDNS）",
+				"tailnet.legend": "● 在线 · ○ 离线 · ⚡ 可用 Tailscale SSH",
+				"transport.opensshHint": "普通 ssh。使用 MagicDNS 名称或 100.x 地址时，流量已经过 WireGuard。",
+				"transport.tailscaleHint": "经由 Tailscale 客户端：解析 MagicDNS、由 tailnet ACL 控制访问、并通过协调服务器校验主机密钥。",
+				"transport.openssh": "OpenSSH",
+				"transport.tailscale": "Tailscale SSH",
+				"connect.note": "密钥认证使用你的 SSH agent 与 ~/.ssh/config。密码需要 sshpass，且仅保存在 $DSH_HOME/remotes.json（chmod 600）。",
+				"local.systemChooser": "此部署使用系统文件夹选择器。",
+				"local.browseHint": "或在下方目录树中选择",
+				"footer.remoteFolder": "远程文件夹：{path}",
+				"footer.localFolder": "本地文件夹：{path}",
+				"mirror.local": "本地镜像：{path}",
+				"disabled.notice": "远程 SSH 已关闭。请在 设置 → 插件 → “remote-ssh” 中启用。",
+				"settings.title": "远程工作区（SSH）",
+				"settings.description": "连接服务器、选择一个远程文件夹，并用全部工具在其中工作。",
+				"settings.enabled": "已启用",
+				"settings.disabled": "已禁用",
+				"settings.empty": "尚未连接任何服务器。"
+			}
+		};
+
+		/**
+		 * Locale-bound translator.
+		 *
+		 * Slot components are plain functions the shell renders, not closures over
+		 * apply(), so the binding lives at module scope and apply() sets it once.
+		 * Until then the key itself is returned, which keeps a stray call visible
+		 * rather than blank.
+		 */
+		let translate = (key) => key;
+		const T = (key, params) => translate(key, params);
 		const SETTINGS_NS = "remote-ssh";
 
 		const FONT = "var(--dsw-font-family, system-ui, -apple-system, 'Segoe UI', sans-serif)";
@@ -145,7 +322,7 @@ window.__ModuleLoader__.load({
 			}));
 
 			const submit = () => {
-				if (draft.host.trim() === "") { setError("L'hote est obligatoire."); return; }
+				if (draft.host.trim() === "") { setError(T("error.hostRequired")); return; }
 				setBusy(true); setError(undefined);
 				props.onConnect({ ...draft, port: Number(draft.port) || 22 })
 					.then(() => setBusy(false))
@@ -153,7 +330,7 @@ window.__ModuleLoader__.load({
 			};
 
 			const peerList = peers.length === 0 ? null : h("div", { style: { marginBottom: 12 } },
-				h("div", { style: styles.label }, "Depuis Tailscale (", String(peers.length), " pair(s), MagicDNS)"),
+				h("div", { style: styles.label }, T("tailnet.peers", { n: peers.length })),
 				h("div", { style: { ...styles.row, gap: 6 } },
 					peers.slice(0, 8).map((peer) => h("button", {
 						key: peer.id,
@@ -162,44 +339,39 @@ window.__ModuleLoader__.load({
 						onClick: () => usePeer(peer)
 					}, peer.online === true ? "● " : "○ ", peer.hostName, peer.tailscaleSsh ? " ⚡" : ""))
 				),
-				h("div", { style: { ...styles.note, marginTop: 4 } }, "● en ligne · ○ hors ligne · ⚡ Tailscale SSH disponible")
+				h("div", { style: { ...styles.note, marginTop: 4 } }, T("tailnet.legend"))
 			);
 
 			const transportPicker = h("div", { style: { ...styles.row, marginBottom: 10 } },
-				h("span", { style: { ...styles.label, margin: 0 } }, "Transport"),
+				h("span", { style: { ...styles.label, margin: 0 } }, T("field.transport")),
 				["openssh", "tailscale"].map((value) => h("button", {
 					key: value,
 					style: styles.chip(draft.transport === value),
 					onClick: () => set("transport")(value)
-				}, value === "openssh" ? "OpenSSH" : "Tailscale SSH")),
+				}, value === "openssh" ? T("transport.openssh") : T("transport.tailscale"))),
 				h("span", { style: { ...styles.note, flex: "1 1 220px" } },
-					draft.transport === "tailscale"
-						? "Passe par le client Tailscale : resolution MagicDNS, acces par les ACL du tailnet, cle d'hote verifiee aupres du serveur de coordination."
-						: "ssh classique. Sur un nom MagicDNS ou une adresse 100.x, le trafic passe deja par WireGuard.")
+					draft.transport === "tailscale" ? T("transport.tailscaleHint") : T("transport.opensshHint"))
 			);
 
 			return h("div", null,
 				peerList,
 				transportPicker,
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
-					h(Field, { label: "Nom (optionnel)", value: draft.label, onChange: set("label"), placeholder: "prod" }),
-					h(Field, { label: "Hote", value: draft.host, onChange: set("host"), placeholder: "10.0.0.4, node.tailnet.ts.net" }),
-					h("div", { style: { flex: "0 0 90px" } }, h(Field, { label: "Port", value: draft.port, onChange: set("port") }))
+					h(Field, { label: T("field.label"), value: draft.label, onChange: set("label"), placeholder: T("placeholder.label") }),
+					h(Field, { label: T("field.host"), value: draft.host, onChange: set("host"), placeholder: T("placeholder.host") }),
+					h("div", { style: { flex: "0 0 90px" } }, h(Field, { label: T("field.port"), value: draft.port, onChange: set("port") }))
 				),
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
-					h(Field, { label: "Utilisateur", value: draft.user, onChange: set("user"), placeholder: "root" }),
-					h(Field, { label: "Cle privee (chemin local)", value: draft.identityFile, onChange: set("identityFile"), placeholder: "~/.ssh/id_ed25519" }),
-					h(Field, { label: "Mot de passe (optionnel)", value: draft.password, onChange: set("password"), type: "password" })
+					h(Field, { label: T("field.user"), value: draft.user, onChange: set("user"), placeholder: T("placeholder.user") }),
+					h(Field, { label: T("field.key"), value: draft.identityFile, onChange: set("identityFile"), placeholder: T("placeholder.key") }),
+					h(Field, { label: T("field.password"), value: draft.password, onChange: set("password"), type: "password" })
 				),
 				h("div", { style: styles.row },
-					h("button", { style: styles.button(true, busy), onClick: submit, disabled: busy }, busy ? "Connexion..." : "Se connecter"),
-					props.onCancel === undefined ? null : h("button", { style: styles.button(false, false), onClick: props.onCancel }, "Annuler")
+					h("button", { style: styles.button(true, busy), onClick: submit, disabled: busy }, busy ? T("action.connecting") : T("action.connect")),
+					props.onCancel === undefined ? null : h("button", { style: styles.button(false, false), onClick: props.onCancel }, T("action.cancel"))
 				),
 				error === undefined ? null : h("div", { style: styles.error }, error),
-				h("div", { style: { ...styles.note, marginTop: 10 } },
-					"L'authentification par cle utilise votre agent SSH et votre ~/.ssh/config. Le mot de passe necessite ",
-					h("code", null, "sshpass"), " et n'est stocke que dans $DSH_HOME/remotes.json (chmod 600)."
-				)
+				h("div", { style: { ...styles.note, marginTop: 10 } }, T("connect.note"))
 			);
 		}
 
@@ -251,8 +423,8 @@ window.__ModuleLoader__.load({
 
 			if (state.browsable !== true) {
 				return h("div", null,
-					h("div", { style: styles.note }, "Ce déploiement utilise le sélecteur de dossiers du système."),
-					h("div", { style: { marginTop: 12 } }, h("button", { style: styles.button(true, props.busy), onClick: props.onPickSystem, disabled: props.busy }, "Choisir un dossier…"))
+					h("div", { style: styles.note }, T("local.systemChooser")),
+					h("div", { style: { marginTop: 12 } }, h("button", { style: styles.button(true, props.busy), onClick: props.onPickSystem, disabled: props.busy }, T("action.chooseFolder")))
 				);
 			}
 
@@ -276,17 +448,17 @@ window.__ModuleLoader__.load({
 					state.loading ? h("span", { style: { marginLeft: 8 } }, "…") : null
 				),
 				h("div", { style: { ...styles.row, marginTop: 8 } },
-					h("button", { style: styles.button(false, false), onClick: () => props.onNewFolder("") }, "＋ Nouveau dossier"),
+					h("button", { style: styles.button(false, false), onClick: () => props.onNewFolder("") }, T("action.newFolder")),
 					props.newFolder === undefined ? null : h("span", { style: { ...styles.row, flex: "1 1 220px" } },
 						h("input", {
-							autoFocus: true, style: { ...styles.input, flex: 1 }, value: props.newFolder, placeholder: "nom-du-dossier",
+							autoFocus: true, style: { ...styles.input, flex: 1 }, value: props.newFolder, placeholder: T("placeholder.folderName"),
 							onChange: (event) => props.onNewFolder(event.target.value),
 							onKeyDown: (event) => { if (event.key === "Enter") createFolder(); if (event.key === "Escape") props.onNewFolder(undefined); }
 						}),
-						h("button", { style: styles.button(true, false), onClick: createFolder }, "Créer")
+						h("button", { style: styles.button(true, false), onClick: createFolder }, T("action.create"))
 					)
 				),
-				h("div", { style: styles.list }, rows.length === 0 ? h("div", { style: { ...styles.note, padding: 12 } }, state.loading ? "Chargement…" : "(dossier vide)") : rows),
+				h("div", { style: styles.list }, rows.length === 0 ? h("div", { style: { ...styles.note, padding: 12 } }, state.loading ? T("state.loading") : T("state.emptyFolder")) : rows),
 				state.error === undefined ? null : h("div", { style: styles.error }, state.error)
 			);
 		}
@@ -355,7 +527,7 @@ window.__ModuleLoader__.load({
 						title: `${profile.user === "" ? "" : `${profile.user}@`}${profile.host}:${profile.port}`,
 						onClick: () => props.onSelectProfile(profile.id)
 					}, profile.label, profile.transport === "tailscale" ? " ⚡" : (profile.tailnet === true ? " 🌐" : ""))),
-					h("button", { style: styles.chip(false), onClick: props.onAddProfile }, "＋ Serveur")
+					h("button", { style: styles.chip(false), onClick: props.onAddProfile }, T("action.addServer"))
 				),
 				h("div", { style: styles.crumbs },
 					(state.crumbs ?? []).map((crumb, index) => h(react.Fragment, { key: crumb.path },
@@ -365,19 +537,19 @@ window.__ModuleLoader__.load({
 					state.loading ? h("span", { style: { marginLeft: 8 } }, "…") : null
 				),
 				h("div", { style: { ...styles.row, marginTop: 8 } },
-					h("button", { style: styles.button(false, false), onClick: () => setNewFolder("") }, "＋ Nouveau dossier"),
+					h("button", { style: styles.button(false, false), onClick: () => setNewFolder("") }, T("action.newFolder")),
 					newFolder === undefined ? null : h("span", { style: { ...styles.row, flex: "1 1 220px" } },
 						h("input", {
-							autoFocus: true, style: { ...styles.input, flex: 1 }, value: newFolder, placeholder: "nom-du-dossier",
+							autoFocus: true, style: { ...styles.input, flex: 1 }, value: newFolder, placeholder: T("placeholder.folderName"),
 							onChange: (event) => setNewFolder(event.target.value),
 							onKeyDown: (event) => { if (event.key === "Enter") createFolder(); if (event.key === "Escape") setNewFolder(undefined); }
 						}),
-						h("button", { style: styles.button(true, false), onClick: createFolder }, "Créer")
+						h("button", { style: styles.button(true, false), onClick: createFolder }, T("action.create"))
 					)
 				),
-				h("div", { style: styles.list }, rows.length === 0 ? h("div", { style: { ...styles.note, padding: 12 } }, state.loading ? "Chargement…" : "(dossier vide)") : rows),
+				h("div", { style: styles.list }, rows.length === 0 ? h("div", { style: { ...styles.note, padding: 12 } }, state.loading ? T("state.loading") : T("state.emptyFolder")) : rows),
 				state.error === undefined ? null : h("div", { style: styles.error }, state.error),
-				state.localPath === undefined ? null : h("div", { style: { ...styles.note, marginTop: 8 } }, "Miroir local : ", h("code", null, state.localPath))
+				state.localPath === undefined ? null : h("div", { style: { ...styles.note, marginTop: 8 } }, T("mirror.local", { path: state.localPath }))
 			);
 		}
 
@@ -429,7 +601,7 @@ window.__ModuleLoader__.load({
 					.catch((reason) => { setBusy(false); setError(reason instanceof Error ? reason.message : String(reason)); });
 			};
 			const connect = (draft) => callHost(ctx, "connect", { input: draft }).then((result) => {
-				if (result.report !== undefined && result.report.ok !== true) throw new Error(result.report.error ?? "connexion refusée");
+				if (result.report !== undefined && result.report.ok !== true) throw new Error(result.report.error ?? T("error.refused"));
 				setAdding(false);
 				refresh();
 				setProfileId(result.profile?.id);
@@ -438,8 +610,8 @@ window.__ModuleLoader__.load({
 			const body = tab === "local"
 				? h("div", null,
 					h("div", { style: styles.row },
-						h("button", { style: styles.button(false, busy), onClick: pickLocal, disabled: busy }, "Sélecteur du système…"),
-						h("span", { style: { ...styles.note, flex: "1 1 220px" } }, "ou choisissez dans l'arborescence ci-dessous")
+						h("button", { style: styles.button(false, busy), onClick: pickLocal, disabled: busy }, T("action.systemPicker")),
+						h("span", { style: { ...styles.note, flex: "1 1 220px" } }, T("local.browseHint"))
 					),
 					error === undefined ? null : h("div", { style: { ...styles.error, marginTop: 8 } }, error),
 					h("div", { style: { marginTop: 10 } }, h(LocalBrowser, {
@@ -452,7 +624,7 @@ window.__ModuleLoader__.load({
 					}))
 				)
 				: status?.enabled === false
-					? h("div", { style: styles.note }, "Le module SSH distant est désactivé. Activez-le dans Paramètres → Plugins → « remote-ssh ».")
+					? h("div", { style: styles.note }, T("disabled.notice"))
 					: adding || profiles.length === 0
 						? h(ConnectForm, { onConnect: connect, onCancel: profiles.length === 0 ? undefined : () => setAdding(false), tailnet: status?.tailnet })
 						: h(RemoteBrowser, {
@@ -467,23 +639,23 @@ window.__ModuleLoader__.load({
 			return h("div", { style: styles.overlay, onMouseDown: (event) => { if (event.target === event.currentTarget) close(); } },
 				h("div", { style: styles.dialog },
 					h("div", { style: styles.head },
-						h("span", { style: styles.title }, "Ajouter un workspace"),
+						h("span", { style: styles.title }, T("dialog.title")),
 						h("button", { style: styles.button(false, false), onClick: close }, "✕")
 					),
 					h("div", { style: styles.tabs },
-						h("button", { style: styles.tab(tab === "local"), onClick: () => setTab("local") }, "Cet ordinateur"),
-						h("button", { style: styles.tab(tab === "remote"), onClick: () => setTab("remote") }, "Serveur distant (SSH)")
+						h("button", { style: styles.tab(tab === "local"), onClick: () => setTab("local") }, T("tab.local")),
+						h("button", { style: styles.tab(tab === "remote"), onClick: () => setTab("remote") }, T("tab.remote"))
 					),
 					h("div", { style: styles.body }, body, error === undefined ? null : h("div", { style: styles.error }, error)),
 					h("div", { style: styles.foot },
 						h("span", { style: { flex: 1, ...styles.note } },
-							path === undefined ? "" : tab === "remote" ? `Dossier distant : ${path}` : `Dossier local : ${path}`),
+							path === undefined ? "" : tab === "remote" ? T("footer.remoteFolder", { path }) : T("footer.localFolder", { path })),
 						tab === "remote" && profiles.length > 0 && !adding && status?.enabled !== false
-							? h("button", { style: styles.button(true, busy || path === undefined), disabled: busy || path === undefined, onClick: adopt }, busy ? "Ajout…" : "Utiliser ce dossier")
+							? h("button", { style: styles.button(true, busy || path === undefined), disabled: busy || path === undefined, onClick: adopt }, busy ? T("action.adding") : T("action.use"))
 							: tab === "local" && path !== undefined
-								? h("button", { style: styles.button(true, busy), disabled: busy, onClick: () => props.onPicked(path) }, "Utiliser ce dossier")
+								? h("button", { style: styles.button(true, busy), disabled: busy, onClick: () => props.onPicked(path) }, T("action.use"))
 								: null,
-						h("button", { style: styles.button(false, false), onClick: close }, "Fermer")
+						h("button", { style: styles.button(false, false), onClick: close }, T("action.close"))
 					)
 				)
 			);
@@ -500,15 +672,15 @@ window.__ModuleLoader__.load({
 			return h(react.Fragment, null,
 				h("button", {
 					type: "button",
-					title: "Serveur distant (SSH)",
-					"aria-label": "Serveur distant (SSH)",
+					title: T("tab.remote"),
+					"aria-label": T("tab.remote"),
 					onClick: openPanel,
 					style: {
 						cursor: "pointer", border: "none", background: "transparent", color: C.dim,
 						display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 8px",
 						borderRadius: 8, fontSize: 13, fontFamily: FONT
 					}
-				}, h("span", null, "🖥"), props.wide === true ? h("span", null, "Serveur distant") : null),
+				}, h("span", null, "🖥"), props.wide === true ? h("span", null, T("launcher.label")) : null),
 				open ? h(RemoteDirectoryFlow, {
 					ctx,
 					open: true,
@@ -541,11 +713,11 @@ window.__ModuleLoader__.load({
 			return h("li", { style: { listStyle: "none", border: `0.5px solid ${C.border}`, borderRadius: 12, padding: 14, fontFamily: FONT, color: C.text } },
 				h("div", { style: styles.row },
 					h("div", { style: { flex: 1 } },
-						h("div", { style: { fontSize: 14, fontWeight: 600 } }, "Workspaces distants (SSH)"),
-						h("div", { style: styles.note }, "Connectez des serveurs, choisissez un dossier distant et travaillez dedans avec tous les outils.")
+						h("div", { style: { fontSize: 14, fontWeight: 600 } }, T("settings.title")),
+						h("div", { style: styles.note }, T("settings.description"))
 					),
 					h("button", { style: styles.button(status?.enabled === true, busy), onClick: toggle, disabled: busy },
-						status?.enabled === true ? "Activé" : "Désactivé")
+						status?.enabled === true ? T("settings.enabled") : T("settings.disabled"))
 				),
 				status?.profiles?.length > 0 ? h("ul", { style: { margin: "12px 0 0", padding: 0 } },
 					status.profiles.map((profile) => h("li", {
@@ -554,9 +726,9 @@ window.__ModuleLoader__.load({
 					},
 						h("span", { style: styles.status(profile.platform !== undefined) }, profile.platform !== undefined ? "●" : "○"),
 						h("span", { style: { flex: 1 } }, profile.label, h("span", { style: styles.note }, `  ${profile.user === "" ? "" : `${profile.user}@`}${profile.host}:${profile.port}`)),
-						h("button", { style: styles.button(false, false), onClick: () => forget(profile.id) }, "Oublier")
+						h("button", { style: styles.button(false, false), onClick: () => forget(profile.id) }, T("action.forget"))
 					))
-				) : h("div", { style: { ...styles.note, marginTop: 8 } }, "Aucun serveur connecté pour l'instant."),
+				) : h("div", { style: { ...styles.note, marginTop: 8 } }, T("settings.empty")),
 				error === undefined ? null : h("div", { style: styles.error }, error)
 			);
 		}
@@ -593,6 +765,12 @@ window.__ModuleLoader__.load({
 
 		/** Cordis plugin body: the chooser, the launcher, and the Settings card. */
 		function apply(ctx) {
+			// Register first, then bind: the dictionaries are what `translate`
+			// resolves against, and the shell may render a slot synchronously as
+			// soon as it is registered below.
+			ctx.effect(() => ctx.locale.register(NS, dictionaries), "dsh-remote-ssh: locale dictionaries");
+			translate = ctx.locale.bind(NS);
+
 			ctx.slots.inject("conversation.hero.workspace.directoryFlow", () => ctx.slots.inject("sidebar.workspaces.directoryFlow", function* () {
 				const injected = () => ({ ctx });
 				yield registerSafely(ctx, { name: "conversation.hero.workspace.directoryFlow", priority: DIRECTORY_FLOW_PRIORITY, inject: injected }, RemoteDirectoryFlow);
@@ -610,7 +788,7 @@ window.__ModuleLoader__.load({
 		}
 
 		exports.apply = apply;
-		exports.inject = ["slots", "connection", "uiWorkspace", "remote.directoryPicker"];
+		exports.inject = ["slots", "connection", "locale", "uiWorkspace", "remote.directoryPicker"];
 		return module.exports;
 	}
 });

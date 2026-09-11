@@ -1,0 +1,172 @@
+/* The documentation site's single stylesheet.
+ *
+ * No external request: no web font, no CDN. GitHub Pages serves this as-is, and
+ * the pages stay readable offline, which is what a plugin that drives SSH
+ * connections should be able to claim.
+ *
+ * The accent matches the installer's header, so the terminal and the site read
+ * as one product.
+ */
+
+:root {
+  --bg: #16151a;
+  --panel: #1e1d24;
+  --border: #302f39;
+  --text: #e9e7ee;
+  --muted: #a5a1b0;
+  --faint: #75717f;
+  --accent: #d97757;
+  --accent-soft: #3a2a24;
+  --ok: #4cc38a;
+  --warn: #e5b567;
+  --radius: 12px;
+  --width: 62rem;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fbfaf9;
+    --panel: #ffffff;
+    --border: #e5e2dd;
+    --text: #23212a;
+    --muted: #5d5a66;
+    --faint: #8c8894;
+    --accent: #b5573a;
+    --accent-soft: #f6ece7;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+code {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+}
+
+pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+pre code { background: none; border: none; padding: 0; font-size: 1em; }
+
+header.site {
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+header.site .inner {
+  max-width: var(--width);
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand { font-weight: 650; letter-spacing: -0.01em; }
+.brand span { color: var(--accent); }
+
+nav.langs { margin-left: auto; display: flex; gap: 0.35rem; }
+
+nav.langs a {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+nav.langs a[aria-current="page"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+main { max-width: var(--width); margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+.hero { padding: 1.5rem 0 2rem; }
+.hero h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; margin: 0 0 0.6rem; letter-spacing: -0.02em; }
+.hero p.lead { font-size: 1.12rem; color: var(--muted); margin: 0 0 1.4rem; max-width: 46rem; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+.button {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.5rem 1rem;
+  color: var(--text);
+  font-size: 0.94rem;
+}
+
+.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.button:hover { text-decoration: none; border-color: var(--accent); }
+.button.primary:hover { filter: brightness(1.06); }
+
+section { margin-top: 2.6rem; }
+section h2 { font-size: 1.25rem; margin: 0 0 0.9rem; letter-spacing: -0.01em; }
+section h2::before { content: "#"; color: var(--accent); margin-right: 0.5rem; opacity: 0.7; }
+section h3 { font-size: 1rem; margin: 1.6rem 0 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+ul, ol { padding-left: 1.2rem; }
+li { margin: 0.25rem 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+th, td { border: 1px solid var(--border); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  background: var(--panel);
+  margin: 1rem 0;
+}
+
+.card h3 { margin-top: 0; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 0.98rem; }
+
+.note { color: var(--muted); font-size: 0.92rem; }
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+
+footer.site {
+  border-top: 1px solid var(--border);
+  padding: 1.6rem 1.25rem 3rem;
+  color: var(--faint);
+  font-size: 0.9rem;
+}
+
+footer.site .inner { max-width: var(--width); margin: 0 auto; }
+
+.chooser { display: grid; gap: 0.8rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); margin-top: 1.8rem; }
+.chooser a { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.2rem; color: var(--text); background: var(--panel); }
+.chooser a:hover { border-color: var(--accent); text-decoration: none; }
+.chooser strong { display: block; font-size: 1.05rem; }
+.chooser span { color: var(--muted); font-size: 0.9rem; }

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-remote-ssh — 使用文档</title>
+<meta name="description" content="通过 SSH 连接一台服务器，选择其中的文件夹并直接在其中工作：Agent 用已有的全部工具在远端读取、写入、修改、列目录、搜索并执行 shell 命令。">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site">
+  <div class="inner">
+    <a class="brand" href="../" style="color:inherit">dsh<span>-</span>remote<span>-</span>ssh</a>
+    <nav class="langs">
+      <a href="../fr/" onclick="remember('fr')">Français</a>
+      <a href="../en/" onclick="remember('en')">English</a>
+      <a href="../zh/" aria-current="page" onclick="remember('zh')">中文</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>像使用本地目录一样使用远程服务器</h1>
+    <p class="lead">通过 SSH 连接一台主机，选择其中的文件夹，然后直接在其中工作。Agent 会用已有的
+      全部工具在远端读取、写入、修改、列目录、搜索并执行 shell 命令。连接由所有会话共享，可同时连接
+      多台服务器，并可在<strong>设置 → 插件</strong>中一键启用。</p>
+    <div class="actions">
+      <a class="button primary" href="#install">安装</a>
+      <a class="button" href="https://github.com/cmukanisa/dsh-remote-ssh/releases">版本发布</a>
+      <a class="button" href="https://github.com/cmukanisa/dsh-remote-ssh">源码</a>
+    </div>
+  </div>
+
+  <section>
+    <h2>它能做什么</h2>
+    <ul>
+      <li><strong>远程文件夹变成工作区。</strong>它像其他工作区一样出现在侧边栏中，在其中打开的会话
+        直接作用于服务器。</li>
+      <li><strong>全部工具，而非子集。</strong>文件读写、字面量编辑、目录列表、
+        <code>glob</code>/<code>grep</code> 以及 shell 都在远端执行。</li>
+      <li><strong>可同时连接多台主机。</strong>连接配置是持久化的、由所有会话共享：连接过一次的
+        服务器在任何地方都可用。</li>
+      <li><strong>OpenSSH 或 Tailscale SSH。</strong>以你自己的密钥、agent 与
+        <code>~/.ssh/config</code> 为准；tailnet 可额外提供基于身份的访问。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>环境要求</h2>
+    <ul>
+      <li>已安装 <strong>dsh</strong> — <code>npm install -g @deepseek-ai/dsh</code>，任意 profile。</li>
+      <li><strong>Node 22.19+ 或 24+</strong> — 与 harness 自身要求一致。</li>
+      <li>运行 dsh 的机器上有 <strong>OpenSSH 客户端</strong>（<code>ssh -V</code>）。Windows
+        OpenSSH 可作为客户端使用，但没有连接复用。</li>
+      <li>一台 <strong>POSIX SSH 服务器</strong>（Linux、macOS、BSD）。Windows OpenSSH 服务器会被
+        明确拒绝并给出提示。</li>
+      <li>推荐使用密钥认证；仅在使用密码时需要 <code>sshpass</code>。</li>
+      <li>可选：服务器上安装 <code>ripgrep</code>，供 <code>glob</code> 与 <code>grep</code> 使用。</li>
+    </ul>
+  </section>
+
+  <section id="install">
+    <h2>安装</h2>
+    <pre><code>curl -fsSL https://raw.githubusercontent.com/cmukanisa/dsh-remote-ssh/main/install.sh | sh</code></pre>
+    <p class="note">或从克隆安装：<code>git clone https://github.com/cmukanisa/dsh-remote-ssh &amp;&amp; cd dsh-remote-ssh &amp;&amp; node install.mjs</code></p>
+
+    <div class="card">
+      <h3>安装即启用；整个过程是一个事务</h3>
+      <p class="note">它先检查全部环境要求，再安装、验证；只要有任何一步不通过，就会回滚到原先的
+        确切状态——半安装的插件会让 harness 启动一份禁用了内置 provider、却没有注册替代实现的
+        组合配置。</p>
+      <pre><code>  checking
+  ✓ node        ·························· v24.14.0 (the harness requires &gt;= 22.19)
+  ✓ ssh         ···································· OpenSSH_10.3p1, LibreSSL 3.3.6
+  ✓ tailscale   ················ 1.102.3 — the Tailscale SSH transport is available
+  ✓ harness     ················································· /Users/you/.dsh
+  ✓ writable    ··································· profiles/plugins accepts writes
+  ✓ modules     ················· profiles/node_modules/@deepseek-ai/cordis present
+
+  installing
+  ✓ copied      ········ dsh-remote-ssh → profiles/plugins/dsh-remote-ssh (8 files)
+  ✓ patched     ···································· cordis.patch.yml (8 rows)
+  ✓ enabled     ····························· settings.yaml remote-ssh.enabled = true
+
+  verifying
+  ✓ files       ······················································ 12 files in place
+  ✓ composition ·············································· 8 expected rows
+  ✓ setting     ····································· remote-ssh.enabled = true
+  ✓ module      ············· registry.js imports and exports RemoteRegistry
+
+  ──────────────────────────────────────────────────────────────────────────────
+  Done in 0.1s. Reload the harness page, then workspace "+" → "Serveur distant (SSH)".</code></pre>
+    </div>
+
+    <table>
+      <tr><th>参数</th><th>作用</th></tr>
+      <tr><td><code>--keep-off</code></td><td>以停用状态安装 — 适用于需要单独审计启用动作的批量部署</td></tr>
+      <tr><td><code>--enable</code></td><td>即使之前被停用也强制启用</td></tr>
+      <tr><td><code>--link</code></td><td>以符号链接代替复制（开发用）</td></tr>
+      <tr><td><code>--dry-run</code></td><td>只运行检查并报告将要发生的改动，不写入任何内容</td></tr>
+      <tr><td><code>--no-color</code></td><td>纯文本输出（同样遵循 <code>NO_COLOR</code>）</td></tr>
+      <tr><td><code>--uninstall</code></td><td>移除插件包、组合配置行与该项设置</td></tr>
+      <tr><td><code>--dsh-home DIR</code></td><td>指定另一个 harness 主目录</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>使用</h2>
+    <ol>
+      <li>刷新 harness 页面。</li>
+      <li>点击侧边栏工作区标题中的 <strong>+</strong> — 或侧边栏底部的 🖥 按钮，两者打开同一对话框。</li>
+      <li>选择 <strong>远程服务器（SSH）</strong>。</li>
+      <li>点击 <strong>＋ 服务器</strong>，填写连接信息：名称、主机、端口、用户、私钥路径或密码。</li>
+      <li>浏览到目标文件夹，点击 <strong>使用此文件夹</strong>。</li>
+    </ol>
+    <p>该文件夹会作为普通工作区出现。在其中打开的会话直接作用于服务器，该连接配置也对所有其他
+      会话可用。</p>
+    <p class="note">界面会跟随浏览器语言：中文、英文或法文。</p>
+  </section>
+
+  <section>
+    <h2>Tailscale</h2>
+    <p>“通过 Tailscale 连接”包含两件不同的事，插件不会把它们混为一谈。</p>
+    <ul>
+      <li><strong>在 tailnet 上使用 OpenSSH — 无需配置。</strong>把连接配置指向 MagicDNS 名称或
+        <code>100.x</code> 地址，真正的 <code>ssh</code> 会经 WireGuard 连接，并以你的密钥与
+        <code>known_hosts</code> 为准。</li>
+      <li><strong><code>tailscale ssh</code> — 按连接配置选择启用。</strong>Tailscale 客户端会包装
+        系统 <code>ssh</code>：解析 MagicDNS、通过 <code>tailscaled</code> 建立连接，并向协调服务器
+        校验目标主机密钥。此时访问由 tailnet ACL 而非磁盘上的密钥决定。</li>
+    </ul>
+    <p>连接表单会列出 tailnet 中的节点；当该节点运行 Tailscale SSH 服务端时，一键即可填入 MagicDNS
+      名称、用户与传输方式。被 Tailscale 标记为离线的节点会在尝试<em>之前</em>指出，而不是表现为
+      连接超时。</p>
+  </section>
+
+  <section>
+    <h2>更新</h2>
+    <p>重新运行安装器即可。它会重写自己的组合配置块，这足以启用新版本而<strong>无需重启
+      harness</strong>：</p>
+    <ul>
+      <li><strong>浏览器端</strong>内容由 <code>dsh-client-hmr</code> 轮询的字节提供，替换已安装的
+        bundle 会改变页面获取到的修订号；</li>
+      <li><strong>宿主端</strong>（<code>lib/*.js</code>）由 Node 的 ESM loader 缓存，因此那一半需要
+        重启 harness。</li>
+    </ul>
+    <pre><code>node install.mjs       # 或再次执行 curl 一行命令</code></pre>
+  </section>
+
+  <section>
+    <h2>故障排查</h2>
+    <table>
+      <tr><th>现象</th><th>原因与处理</th></tr>
+      <tr><td><code>does not answer as a POSIX host</code></td><td>目标是非 POSIX 服务器。请使用 Linux/macOS 主机，或将该机器的 WSL sshd 暴露在独立端口上。</td></tr>
+      <tr><td><code>Permission denied (publickey)</code></td><td>先手动执行 <code>ssh &lt;主机&gt;</code>；插件使用同一个客户端、agent 与配置。</td></tr>
+      <tr><td>主机密钥发生变化</td><td>插件会拒绝，这是正确的。确认无误后从 <code>known_hosts</code> 删除旧条目。</td></tr>
+      <tr><td><code>glob</code>/<code>grep</code> 提示程序不存在</td><td>在服务器上安装 ripgrep（<code>apt-get install ripgrep</code>、<code>dnf install ripgrep</code>、<code>apk add ripgrep</code>）。</td></tr>
+      <tr><td>tailnet 节点连接超时</td><td>Tailscale 已标记其离线，连接表单会事先说明。</td></tr>
+      <tr><td>某些纯本地工具看不到文件</td><td>该工具绕过了文件系统抽象层，因此只看到空的本地镜像。请使用工作区文件树。</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>需要了解的边界</h2>
+    <ul>
+      <li><strong>仅支持 POSIX 服务器。</strong>远端以 POSIX shell 驱动；Windows OpenSSH 服务器会被
+        拒绝，而不是半可用。</li>
+      <li><strong>远程命令不受沙箱约束。</strong>沙箱是同内核机制；经 SSH 时，账号本身的权限就是
+        边界，因此远程执行不会报告任何沙箱信息。<em>文件系统</em>层面的限制仍然生效。</li>
+      <li><strong><code>glob</code> 与 <code>grep</code> 需要服务器上有 ripgrep。</strong></li>
+      <li><strong>没有远程文件监听。</strong>目录树在导航时刷新。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>链接</h2>
+    <ul>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh">代码仓库</a> — 源码与 issue</li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">版本发布</a> — 归档包与校验和</li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/blob/main/CONTRIBUTING.md">参与贡献</a></li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/blob/main/SECURITY.md">安全策略</a> — SSH 通道的保证，以及如何报告问题</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="inner">
+    由 <a href="https://github.com/cmukanisa">Christian Kasse (@cmukanisa)</a> 构建 · MIT ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh">代码仓库</a> ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">版本发布</a>
+  </div>
+</footer>
+
+<script>
+function remember(lang) { try { localStorage.setItem("dsh-remote-ssh-docs-lang", lang); } catch (e) {} }
+</script>
+</body>
+</html>

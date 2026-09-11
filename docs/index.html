@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-remote-ssh — documentation</title>
+<meta name="description" content="Remote SSH workspaces for the DeepSeek Harness: connect a server, pick a folder there, and work in it with every tool.">
+<link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+<header class="site">
+  <div class="inner">
+    <span class="brand">dsh<span>-</span>remote<span>-</span>ssh</span>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>Documentation</h1>
+    <p class="lead">Choose a language. The same page is available in all three.</p>
+  </div>
+
+  <div class="chooser">
+    <a href="./fr/"><strong>Français</strong><span>Guide d'utilisation</span></a>
+    <a href="./en/"><strong>English</strong><span>User guide</span></a>
+    <a href="./zh/"><strong>中文</strong><span>使用文档</span></a>
+  </div>
+
+  <section>
+    <h2>On this site</h2>
+    <ul>
+      <li>What the plugin does, and how a remote folder becomes a workspace</li>
+      <li>Requirements, installation, and activation</li>
+      <li>Connecting a host, over OpenSSH or Tailscale</li>
+      <li>Updating, troubleshooting, and the known limits</li>
+    </ul>
+    <p class="note">Source, releases, and the security policy live on
+      <a href="https://github.com/cmukanisa/dsh-remote-ssh">GitHub</a>.</p>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="inner">
+    Built by <a href="https://github.com/cmukanisa">Christian Kasse (@cmukanisa)</a> · MIT ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh">repository</a> ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">releases</a>
+  </div>
+</footer>
+
+<script>
+// Land on the reader's language when the browser states one, without ever
+// trapping them: the chooser above stays visible and the choice is remembered.
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem("dsh-remote-ssh-docs-lang"); } catch (e) {}
+  if (stored) { location.replace("./" + stored + "/"); return; }
+  var wanted = (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+  var lang = wanted.toLowerCase().indexOf("zh") === 0 ? "zh"
+    : wanted.toLowerCase().indexOf("fr") === 0 ? "fr"
+    : wanted.toLowerCase().indexOf("en") === 0 ? "en"
+    : null;
+  if (lang) location.replace("./" + lang + "/");
+})();
+</script>
+</body>
+</html>

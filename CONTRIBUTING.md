@@ -45,6 +45,7 @@ between a contributor's machine and a user's.
 |---|---|---|---|
 | Parser | `npm run check` | nothing | every shipped file parses; the browser bundles keep the module-table wrapper |
 | Template | `npm run test:template` | `npm install` | the composition template parses and replaces every shipped provider it must |
+| Docs | `npm run check:docs` | nothing | the three language pages exist, cross-link, have no dead internal link, and pull no third-party resource |
 | Unit | `npm run test:unit` | nothing | quoting, path mapping, mirrors, policy containment, the Remote descriptor, the composition template |
 | Installer | `node test/install.test.mjs` | nothing | the three durable changes, exactly once, and that the plugin arrives switched **off** |
 | Windows client | `node test/windows-client.test.mjs` | nothing | no multiplexing promise on Windows; `ControlPath` shortening holds for Windows-shaped paths |
@@ -109,12 +110,18 @@ shell, so a review should look for exactly that.
 ### Layout
 
 ```
-packages/dsh-remote-ssh/        host: ssh.js registry.js fs.js shell.js subprocess.js
-packages/dsh-remote-ssh-ui/     browser half + the Remote namespace
+packages/dsh-remote-ssh/        host: ssh.js tailscale.js registry.js fs.js shell.js subprocess.js
+packages/dsh-remote-ssh-ui/     browser half (localized) + the Remote namespace
 patch/remote-ssh.patch.yml.tpl  the composition rows the installer writes
 install.mjs, install.sh         installation
+docs/                           the GitHub Pages site, fr/en/zh, no build step
+scripts/                        the static gates CI runs
 test/                           the suites above
 ```
+
+Client copy is **locale-owned**: every displayed string is a key in the `fr`/`en`/`zh` dictionaries
+registered with `ctx.locale`, and `scripts/check-syntax.mjs` fails if a key is missing from a locale,
+unused, or if a literal reaches the DOM.
 
 ### Rules that are not negotiable
 

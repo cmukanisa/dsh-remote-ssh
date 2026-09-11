@@ -18,57 +18,11 @@ connected at once, and the whole thing is switched on from **Settings → Plugin
 └──────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Updating
-
-Re-run the installer. It rewrites its own composition block, which is enough to
-pick up a new version **without restarting the harness**:
-
-- the **browser half** is served from bytes that `dsh-client-hmr` polls, so
-  replacing the installed bundle changes the revision the page is served and the
-  plugin reloads;
-- a change to the **host half** (`lib/*.js`) is cached by Node's ESM loader, so
-  that one does need a harness restart.
-
-```sh
-node install.mjs       # or the curl one-liner again
-```
-
-## Why it is built this way
-
-A workspace in dsh is a real local directory: session headers carry a canonical
-local `cwd`, the workspace registry `realpath`s the path at creation, and the
-sidebar resolves sessions by that canonical path. Rather than teach all of that a
-second path vocabulary, a remote folder gets a **local mirror** — a real but empty
-directory at `$DSH_HOME/remotes/<profile>/<remote/path>` — and the filesystem
-provider translates every path under it into the remote path it mirrors.
-
-Everything above the filesystem therefore keeps working unchanged, including the
-parts that bypass `ctx.fs`.
-
-The plugin replaces three capability providers, each with a subclass that keeps
-the shipped behaviour verbatim for local paths:
-
-| Provider | Local behaviour | Remote behaviour |
-|---|---|---|
-| `ctx.fs` | `dsh-fs-sandbox` (read/write/edit/list/stat, policy fence) | reads, atomic writes, literal edits, listings, byte windows over SSH |
-| `ctx.shell` | `dsh-bash-sandbox` (timeouts, output caps, spill files, background ranges) | the same lifecycle, with `ssh` as the program |
-| `ctx.subprocess` | `dsh-subprocess-local` | the same managed range, routed — this is what makes `glob`/`grep` work remotely |
+The interface is available in **English, French, and Chinese**, and follows your browser's
+language. The [user guide](https://cmukanisa.github.io/dsh-remote-ssh/) is published in the same
+three languages.
 
 ---
-
-## Requirements
-
-- **dsh** installed (`npm install -g @deepseek-ai/dsh`), any profile.
-- **Node 22.19+ or 24+** — the same range the harness itself requires.
-- An **OpenSSH client** on the machine running dsh (`ssh -V`). Windows OpenSSH
-  works as a *client*, but without connection multiplexing.
-- A **POSIX SSH server** (Linux, macOS, BSD). A Windows OpenSSH server is refused
-  with an explicit message — see [Limitations](#limitations).
-- Key-based authentication is recommended. `sshpass` is required only if you
-  configure a password.
-- Optional: `ripgrep` on the server, for the `glob` and `grep` tools.
 
 ## Install
 
@@ -135,6 +89,18 @@ Three durable changes, idempotent on every re-run:
 A re-install never flips an existing `remote-ssh.enabled` on its own: that value is
 your answer, and `--enable` is the only thing that overrides it.
 
+## Requirements
+
+- **dsh** installed (`npm install -g @deepseek-ai/dsh`), any profile.
+- **Node 22.19+ or 24+** — the same range the harness itself requires.
+- An **OpenSSH client** on the machine running dsh (`ssh -V`). Windows OpenSSH
+  works as a *client*, but without connection multiplexing.
+- A **POSIX SSH server** (Linux, macOS, BSD). A Windows OpenSSH server is refused
+  with an explicit message — see [Limitations](#limitations).
+- Key-based authentication is recommended. `sshpass` is required only if you
+  configure a password.
+- Optional: `ripgrep` on the server, for the `glob` and `grep` tools.
+
 ## Activate
 
 It is already active after installing. The switch stays useful for turning it
@@ -162,6 +128,21 @@ edits, lists, searches, and runs commands on the server.
 
 Several servers can be connected at once; each gets its own mirror, and the
 profile chips switch between them in the same dialog.
+
+## Updating
+
+Re-run the installer. It rewrites its own composition block, which is enough to
+pick up a new version **without restarting the harness**:
+
+- the **browser half** is served from bytes that `dsh-client-hmr` polls, so
+  replacing the installed bundle changes the revision the page is served and the
+  plugin reloads;
+- a change to the **host half** (`lib/*.js`) is cached by Node's ESM loader, so
+  that one does need a harness restart.
+
+```sh
+node install.mjs       # or the curl one-liner again
+```
 
 ## Configuration
 
@@ -246,6 +227,29 @@ and `workspace-write` refuses any remote target whose canonical mirror path is n
 under the per-call workspace root. The check is canonicalize-then-contain over the
 **remote** `realpath`, so it keeps the same guarantee the local fence does.
 
+## Why it is built this way
+
+A workspace in dsh is a real local directory: session headers carry a canonical
+local `cwd`, the workspace registry `realpath`s the path at creation, and the
+sidebar resolves sessions by that canonical path. Rather than teach all of that a
+second path vocabulary, a remote folder gets a **local mirror** — a real but empty
+directory at `$DSH_HOME/remotes/<profile>/<remote/path>` — and the filesystem
+provider translates every path under it into the remote path it mirrors.
+
+Everything above the filesystem therefore keeps working unchanged, including the
+parts that bypass `ctx.fs`.
+
+The plugin replaces three capability providers, each with a subclass that keeps
+the shipped behaviour verbatim for local paths:
+
+| Provider | Local behaviour | Remote behaviour |
+|---|---|---|
+| `ctx.fs` | `dsh-fs-sandbox` (read/write/edit/list/stat, policy fence) | reads, atomic writes, literal edits, listings, byte windows over SSH |
+| `ctx.shell` | `dsh-bash-sandbox` (timeouts, output caps, spill files, background ranges) | the same lifecycle, with `ssh` as the program |
+| `ctx.subprocess` | `dsh-subprocess-local` | the same managed range, routed — this is what makes `glob`/`grep` work remotely |
+
+---
+
 ## Limitations
 
 - **POSIX servers only.** The far side is driven with POSIX shell source (`sh -c`,
@@ -296,6 +300,16 @@ boot where the browser bundle and the Remote namespace are exercised. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
+
+## Documentation
+
+The user guide is published in three languages — **English**, **Français**, **中文** — and the page
+follows your browser's language:
+
+> **<https://cmukanisa.github.io/dsh-remote-ssh/>**
+
+The same content lives in [`docs/`](docs/) in this repository, as plain HTML with no build step.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers how to work on the plugin itself.
 
 ## Guide rapide (français)
 
