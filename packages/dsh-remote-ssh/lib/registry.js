@@ -520,7 +520,6 @@ export class RemoteRegistry extends Service {
    */
   async addWorkspace(id, remotePath, title) {
     const profile = this.require(id)
-    const transport = this.transport(id)
     const resolved = await this.realpath(id, remotePath)
     const listing = await this.listDir(id, resolved)
     const local = this.ensureMirror(id, resolved)
