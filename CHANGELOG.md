@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-11
+
+### Added
+
+- **Tailscale transport.** A profile may set `transport: tailscale`, which runs
+  `tailscale ssh -- <ssh options> <destination> <command>` instead of plain `ssh`:
+  MagicDNS resolution, reachability through `tailscaled` (so it works in
+  userspace-networking mode), and host-key verification against the key the
+  coordination server advertises. Access is then governed by tailnet ACLs rather
+  than by SSH keys on disk.
+- **Tailnet peer picker.** The connect form lists the tailnet's peers from
+  `tailscale status --json`; one click fills the MagicDNS name, the tailnet user,
+  and the Tailscale transport when the peer runs the Tailscale SSH server.
+- **Honest transport reporting.** A MagicDNS name or `100.64/10` address is shown
+  as a tailnet destination (🌐) but connects through plain OpenSSH unless the
+  profile asks otherwise (⚡). Deployment over the tailnet was already possible and
+  is unchanged.
+- **Preflight for offline peers.** A peer Tailscale reports as offline is named
+  before the attempt, instead of surfacing as a connect timeout.
+
+### Fixed
+
+- **A failed probe no longer blames the wrong thing.** Every probe failure used to
+  be reported as "this host does not answer as a POSIX system", including a DNS
+  typo, a rejected key, or an unreachable network. Transport failures now keep
+  their own message, and only a shell-dialect failure earns the POSIX refusal.
+- **The Tailscale client was invoked as an argument of `ssh`.** In Tailscale mode
+  the connector binary is the Tailscale client; a password wraps it (`sshpass -e
+  tailscale ssh -- …`), never the other way round.
+- **One argv builder.** `ctx.shell` and `ctx.subprocess` no longer assemble the
+  wrapper prefix themselves, so a second transport does not mean a second copy of
+  that logic.
+
 ## [0.1.0] — 2026-09-11
 
 First working release.

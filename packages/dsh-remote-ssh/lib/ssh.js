@@ -15,6 +15,7 @@
  * @module dsh-remote-ssh/ssh
  */
 import { spawn } from 'node:child_process'
+import { tailscaleBin } from './tailscale.js'
 import { createHash } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -124,6 +125,50 @@ export function parseProbeOutput(text) {
   return facts
 }
 
+
+/**
+ * Signatures of a failure that happened BEFORE the remote shell could run the
+ * probe.
+ *
+ * The distinction matters because the two failures look identical from here — a
+ * non-zero exit — while the remedies have nothing in common. Reporting "this host
+ * is not POSIX" for a typo in a hostname, a rejected key, or an unreachable
+ * network sends the reader after the wrong problem.
+ */
+const TRANSPORT_FAILURE_SIGNATURES = [
+  /could not resolve hostname/i,
+  /name or service not known/i,
+  /nodename nor servname/i,
+  /permission denied/i,
+  /too many authentication failures/i,
+  /host key verification failed/i,
+  /remote host identification has changed/i,
+  /connection refused/i,
+  /connection (timed out|closed|reset)/i,
+  /operation timed out/i,
+  /network is unreachable|no route to host/i,
+  /kex_exchange_identification/i,
+  /no matching (host key|key exchange|mac|cipher)/i,
+  /connection to .* closed by/i,
+]
+
+/**
+ * Turn one probe failure into the error that names its real cause.
+ *
+ * A transport failure keeps its own message (host resolution, authentication,
+ * network, host key). Everything else means the connection worked and the far
+ * side's shell could not answer a POSIX question, which is what
+ * {@link nonPosixHost} reports.
+ * @param destination - `user@host` for the message.
+ * @param error - the caught failure.
+ * @returns the error to throw.
+ */
+export function classifyProbeFailure(destination, error) {
+  const stderr = error?.stderr ?? ''
+  if (TRANSPORT_FAILURE_SIGNATURES.some((pattern) => pattern.test(stderr))) return error
+  return nonPosixHost(destination, error)
+}
+
 /**
  * The refusal a non-POSIX SSH server earns.
  *
@@ -174,6 +219,15 @@ export class SshTransport {
     this.controlDir = sharedControlDirectory(options.controlDir ?? `${process.env.DSH_HOME ?? `${process.env.HOME}/.dsh`}/${DEFAULT_CONTROL_DIR_SUFFIX[0]}`)
     this.connectTimeoutMs = options.connectTimeoutMs ?? 20000
     this.sshBin = options.sshBin ?? process.env.DSH_SSH_BIN ?? 'ssh'
+    /**
+     * Which transport carries the connection. `openssh` is the default and is
+     * never inferred: a MagicDNS name or a `100.64/10` address connects through
+     * plain OpenSSH unless the profile explicitly asks for Tailscale SSH, because
+     * the two differ in who verifies the host key and who grants access.
+     */
+    this.transport = profile.transport === 'tailscale' ? 'tailscale' : 'openssh'
+    /** The binary that performs the connection; the Tailscale client replaces ssh. */
+    this.tailscaleBin = tailscaleBin()
     this.sshpassBin = options.sshpassBin ?? process.env.DSH_SSHPASS_BIN ?? 'sshpass'
     /** Cached host facts; undefined until {@link probe} succeeds. */
     this.facts = undefined
@@ -205,7 +259,9 @@ export class SshTransport {
     const args = ['-T', '-o', 'LogLevel=ERROR', '-o', `ConnectTimeout=${Math.ceil(this.connectTimeoutMs / 1000)}`, '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=3']
     // Windows OpenSSH ships no connection multiplexing: naming a ControlPath
     // there fails the connection rather than degrading, so the options are
-    // omitted and every call costs its own handshake.
+    // omitted and every call costs its own handshake. Tailscale mode keeps them:
+    // the wrapper execs the system ssh with these options after `--`, so the
+    // data plane still rides one multiplexed connection.
     if (!MULTIPLEXING_UNSUPPORTED) {
       mkdirSync(this.controlDir, { recursive: true, mode: 0o700 })
       args.push('-o', 'ControlMaster=auto', '-o', `ControlPath=${join(this.controlDir, '%C')}`, '-o', 'ControlPersist=60s')
@@ -225,14 +281,54 @@ export class SshTransport {
    * @param options - stdin bytes, cancellation, and an output cap.
    * @returns the child's collected stdout, stderr, and exit status.
    */
+  /**
+   * The wrapper argv that precedes the ssh options.
+   *
+   * `sshpass` answers an interactive prompt, so it must wrap whatever ends up
+   * talking to the terminal. The Tailscale client is a wrapper around the system
+   * `ssh` and only accepts its own flags before `--`; everything after the
+   * separator reaches ssh unchanged.
+   * @returns zero or more argv elements placed before the ssh options.
+   */
+  prefixArgv() {
+    // The Tailscale client is a wrapper around the system ssh and parses its own
+    // flags first, so everything meant for ssh has to follow `--`.
+    return this.transport === 'tailscale' ? ['ssh', '--'] : []
+  }
+
+  /** The binary that talks to the far side, before any wrapper is applied. */
+  connectorBin() {
+    return this.transport === 'tailscale' ? this.tailscaleBin : this.sshBin
+  }
+
+  /** The environment the child needs (the password for `sshpass -e`). */
+  childEnv() {
+    return this.usesPassword ? { SSHPASS: this.profile.password } : {}
+  }
+
+  /**
+   * The complete argv that runs one remote shell source.
+   * @param remoteSource - POSIX shell source for the remote login shell.
+   * @returns argv for `spawn`.
+   */
+  commandArgv(remoteSource) {
+    const connector = [this.connectorBin(), ...this.prefixArgv(), ...this.baseArgs(), this.destination, remoteSource]
+    // sshpass answers the prompt for whatever it wraps, so it takes the leading
+    // position and the connector becomes its argument.
+    return this.usesPassword ? [this.sshpassBin, '-e', ...connector] : connector
+  }
+
+  /**
+   * Spawn one transport child carrying `remoteSource` as the remote command.
+   * @param remoteSource - POSIX shell source for the remote login shell to evaluate.
+   * @param options - cancellation.
+   * @returns the live child process.
+   */
   spawnRaw(remoteSource, options = {}) {
-    const prefix = this.usesPassword ? [this.sshpassBin, '-e'] : []
-    const args = [...prefix, ...this.baseArgs(), this.destination, remoteSource]
-    const env = { ...process.env }
-    if (this.usesPassword) env.SSHPASS = this.profile.password
-    return spawn(this.sshBin, args, {
+    const argv = this.commandArgv(remoteSource)
+    return spawn(argv[0], argv.slice(1), {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env,
+      env: { ...process.env, ...this.childEnv() },
       signal: options.signal,
     })
   }
@@ -333,7 +429,7 @@ export class SshTransport {
     try {
       text = await this.runChecked(script, options)
     } catch (error) {
-      throw nonPosixHost(this.destination, error)
+      throw classifyProbeFailure(this.destination, error)
     }
     const facts = parseProbeOutput(text)
     if (facts.platform === 'unknown') throw nonPosixHost(this.destination)
@@ -361,7 +457,7 @@ export class SshTransport {
   async close() {
     try {
       await new Promise((resolve) => {
-        const child = spawn(this.sshBin, [...this.baseArgs(), '-O', 'exit', this.destination], { stdio: 'ignore' })
+        const child = spawn(this.connectorBin(), [...this.prefixArgv(), ...this.baseArgs(), '-O', 'exit', this.destination], { stdio: 'ignore' })
         child.once('close', resolve)
         child.once('error', resolve)
       })

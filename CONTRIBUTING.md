@@ -48,6 +48,7 @@ between a contributor's machine and a user's.
 | Unit | `npm run test:unit` | nothing | quoting, path mapping, mirrors, policy containment, the Remote descriptor, the composition template |
 | Installer | `node test/install.test.mjs` | nothing | the three durable changes, exactly once, and that the plugin arrives switched **off** |
 | Windows client | `node test/windows-client.test.mjs` | nothing | no multiplexing promise on Windows; `ControlPath` shortening holds for Windows-shaped paths |
+| Tailscale | `node test/tailscale.test.mjs` | nothing | tailnet parsing, address classification, peer lookup, preflight, and the two transports as argv. Synthetic fixtures only: a test file is public, so it must never carry anyone's tailnet |
 | Filesystem E2E | `npm run test:e2e` | a real SSH host | read/write/edit/list/stat/byte windows/URI parsing/sandbox fences, the shell executor, subprocess routing, **and local passthrough** |
 | Harness E2E | `npm run test:harness` | a running `dsh` + a real SSH host | the composed plugin: browser bundle served, `sshWorkspace` Remote namespace answering, a remote folder becoming a workspace |
 | Windows server | `node test/windows-server.expect.mjs` | a Windows SSH host | the refusal is explicit and actionable |

@@ -127,36 +127,78 @@ window.__ModuleLoader__.load({
 
 		/** The connect form shown when no profile exists yet or one is being added. */
 		function ConnectForm(props) {
-			const [draft, setDraft] = react.useState({ label: "", host: "", port: "22", user: "", identityFile: "", password: "" });
+			const [draft, setDraft] = react.useState({ label: "", host: "", port: "22", user: "", identityFile: "", password: "", transport: "openssh" });
 			const [busy, setBusy] = react.useState(false);
 			const [error, setError] = react.useState(undefined);
 			const set = (key) => (value) => setDraft((previous) => ({ ...previous, [key]: value }));
+			const tailnet = props.tailnet;
+			const peers = tailnet !== undefined && tailnet.available === true ? tailnet.peers : [];
+
+			// Picking a peer fills the fields rather than hiding them: MagicDNS names
+			// and the tailnet user are a starting point a person still has to confirm.
+			const usePeer = (peer) => setDraft((previous) => ({
+				...previous,
+				host: peer.dnsName !== "" ? peer.dnsName : peer.address,
+				user: peer.user === undefined ? previous.user : String(peer.user).split("@")[0],
+				label: previous.label === "" ? peer.hostName : previous.label,
+				transport: peer.tailscaleSsh ? "tailscale" : "openssh"
+			}));
+
 			const submit = () => {
-				if (draft.host.trim() === "") { setError("L'hôte est obligatoire."); return; }
+				if (draft.host.trim() === "") { setError("L'hote est obligatoire."); return; }
 				setBusy(true); setError(undefined);
 				props.onConnect({ ...draft, port: Number(draft.port) || 22 })
 					.then(() => setBusy(false))
 					.catch((reason) => { setBusy(false); setError(reason instanceof Error ? reason.message : String(reason)); });
 			};
+
+			const peerList = peers.length === 0 ? null : h("div", { style: { marginBottom: 12 } },
+				h("div", { style: styles.label }, "Depuis Tailscale (", String(peers.length), " pair(s), MagicDNS)"),
+				h("div", { style: { ...styles.row, gap: 6 } },
+					peers.slice(0, 8).map((peer) => h("button", {
+						key: peer.id,
+						title: `${peer.hostName} — ${peer.os}${peer.online ? "" : " (hors ligne)"}${peer.tailscaleSsh ? " — Tailscale SSH" : ""}`,
+						style: styles.chip(peer.online === true),
+						onClick: () => usePeer(peer)
+					}, peer.online === true ? "● " : "○ ", peer.hostName, peer.tailscaleSsh ? " ⚡" : ""))
+				),
+				h("div", { style: { ...styles.note, marginTop: 4 } }, "● en ligne · ○ hors ligne · ⚡ Tailscale SSH disponible")
+			);
+
+			const transportPicker = h("div", { style: { ...styles.row, marginBottom: 10 } },
+				h("span", { style: { ...styles.label, margin: 0 } }, "Transport"),
+				["openssh", "tailscale"].map((value) => h("button", {
+					key: value,
+					style: styles.chip(draft.transport === value),
+					onClick: () => set("transport")(value)
+				}, value === "openssh" ? "OpenSSH" : "Tailscale SSH")),
+				h("span", { style: { ...styles.note, flex: "1 1 220px" } },
+					draft.transport === "tailscale"
+						? "Passe par le client Tailscale : resolution MagicDNS, acces par les ACL du tailnet, cle d'hote verifiee aupres du serveur de coordination."
+						: "ssh classique. Sur un nom MagicDNS ou une adresse 100.x, le trafic passe deja par WireGuard.")
+			);
+
 			return h("div", null,
+				peerList,
+				transportPicker,
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
 					h(Field, { label: "Nom (optionnel)", value: draft.label, onChange: set("label"), placeholder: "prod" }),
-					h(Field, { label: "Hôte", value: draft.host, onChange: set("host"), placeholder: "10.0.0.4 ou mon-serveur" }),
+					h(Field, { label: "Hote", value: draft.host, onChange: set("host"), placeholder: "10.0.0.4, node.tailnet.ts.net" }),
 					h("div", { style: { flex: "0 0 90px" } }, h(Field, { label: "Port", value: draft.port, onChange: set("port") }))
 				),
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
 					h(Field, { label: "Utilisateur", value: draft.user, onChange: set("user"), placeholder: "root" }),
-					h(Field, { label: "Clé privée (chemin local)", value: draft.identityFile, onChange: set("identityFile"), placeholder: "~/.ssh/id_ed25519" }),
+					h(Field, { label: "Cle privee (chemin local)", value: draft.identityFile, onChange: set("identityFile"), placeholder: "~/.ssh/id_ed25519" }),
 					h(Field, { label: "Mot de passe (optionnel)", value: draft.password, onChange: set("password"), type: "password" })
 				),
 				h("div", { style: styles.row },
-					h("button", { style: styles.button(true, busy), onClick: submit, disabled: busy }, busy ? "Connexion…" : "Se connecter"),
+					h("button", { style: styles.button(true, busy), onClick: submit, disabled: busy }, busy ? "Connexion..." : "Se connecter"),
 					props.onCancel === undefined ? null : h("button", { style: styles.button(false, false), onClick: props.onCancel }, "Annuler")
 				),
 				error === undefined ? null : h("div", { style: styles.error }, error),
 				h("div", { style: { ...styles.note, marginTop: 10 } },
-					"L'authentification par clé utilise votre agent SSH et votre ~/.ssh/config. Le mot de passe nécessite ",
-					h("code", null, "sshpass"), " sur cette machine et n'est stocké que dans $DSH_HOME/remotes.json (chmod 600)."
+					"L'authentification par cle utilise votre agent SSH et votre ~/.ssh/config. Le mot de passe necessite ",
+					h("code", null, "sshpass"), " et n'est stocke que dans $DSH_HOME/remotes.json (chmod 600)."
 				)
 			);
 		}
@@ -224,7 +266,7 @@ window.__ModuleLoader__.load({
 						style: styles.chip(profile.id === props.profileId),
 						title: `${profile.user === "" ? "" : `${profile.user}@`}${profile.host}:${profile.port}`,
 						onClick: () => props.onSelectProfile(profile.id)
-					}, profile.label)),
+					}, profile.label, profile.transport === "tailscale" ? " ⚡" : (profile.tailnet === true ? " 🌐" : ""))),
 					h("button", { style: styles.chip(false), onClick: props.onAddProfile }, "＋ Serveur")
 				),
 				h("div", { style: styles.crumbs },
@@ -312,7 +354,7 @@ window.__ModuleLoader__.load({
 				: status?.enabled === false
 					? h("div", { style: styles.note }, "Le module SSH distant est désactivé. Activez-le dans Paramètres → Plugins → « remote-ssh ».")
 					: adding || profiles.length === 0
-						? h(ConnectForm, { onConnect: connect, onCancel: profiles.length === 0 ? undefined : () => setAdding(false) })
+						? h(ConnectForm, { onConnect: connect, onCancel: profiles.length === 0 ? undefined : () => setAdding(false), tailnet: status?.tailnet })
 						: h(RemoteBrowser, {
 							ctx,
 							profileId,

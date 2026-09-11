@@ -26,6 +26,7 @@ import z from '@deepseek-ai/schemastery'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, chmodSync } from 'node:fs'
 import { dirname, join, resolve as joinPath, sep } from 'node:path'
 import { SshTransport, SshTransportError, shellQuote } from './ssh.js'
+import { TRANSPORTS, isTailnetAddress, peerFor, tailnetPreflight, tailnetStatus } from './tailscale.js'
 
 /** Filesystem shape of one persisted connection profile. */
 const PROFILE_SCHEMA = {
@@ -38,6 +39,8 @@ const PROFILE_SCHEMA = {
   password: z.string().default(''),
   strictHostKeyChecking: z.union([z.const('accept-new'), z.const('yes'), z.const('no')]).default('accept-new'),
   remoteRoot: z.string().default(''),
+  /** `openssh` (default) or `tailscale` for the Tailscale SSH wrapper. */
+  transport: z.union([z.const('openssh'), z.const('tailscale')]).default('openssh'),
   extraOptions: z.array(z.string()).default([]),
   createdAt: z.string().required(),
 }
@@ -207,6 +210,10 @@ export class RemoteRegistry extends Service {
         hasPassword: profile.password !== '',
         strictHostKeyChecking: profile.strictHostKeyChecking,
         remoteRoot: profile.remoteRoot,
+        transport: profile.transport ?? 'openssh',
+        // Reported, never inferred: this badge says where the destination lives,
+        // it does not change how the connection is made.
+        tailnet: isTailnetAddress(profile.host),
         mountRoot: this.mountRoot(profile.id),
         createdAt: profile.createdAt,
         platform: facts?.platform,
@@ -246,11 +253,14 @@ export class RemoteRegistry extends Service {
     const base = slugify(label, 'remote')
     let id = base
     for (let index = 2; this.profiles.some((entry) => entry.id === id); index += 1) id = `${base}-${index}`
+    const transport = input.transport ?? 'openssh'
+    if (!TRANSPORTS.includes(transport)) throw new RemoteProfileError(`unknown transport "${transport}"; expected one of ${TRANSPORTS.join(', ')}`, 'invalid-profile')
     const profile = {
       id,
       label,
       host,
       port,
+      transport,
       user,
       identityFile: String(input.identityFile ?? '').trim(),
       password: String(input.password ?? ''),
@@ -281,6 +291,10 @@ export class RemoteRegistry extends Service {
     if (patch.password !== undefined) profile.password = String(patch.password)
     if (patch.strictHostKeyChecking !== undefined) profile.strictHostKeyChecking = patch.strictHostKeyChecking
     if (patch.remoteRoot !== undefined) profile.remoteRoot = normalizeRemotePath(patch.remoteRoot)
+    if (patch.transport !== undefined) {
+      if (!TRANSPORTS.includes(patch.transport)) throw new RemoteProfileError(`unknown transport "${patch.transport}"; expected one of ${TRANSPORTS.join(', ')}`, 'invalid-profile')
+      profile.transport = patch.transport
+    }
     if (patch.extraOptions !== undefined) profile.extraOptions = Array.isArray(patch.extraOptions) ? patch.extraOptions.map(String) : []
     this.transports.delete(id)
     this.facts.delete(id)
@@ -326,8 +340,13 @@ export class RemoteRegistry extends Service {
    * @returns a report describing success, the discovered platform, and the login directory.
    */
   async test(id) {
+    const profile = this.require(id)
     const transport = this.transport(id)
     transport.facts = undefined
+    // A tailnet peer that is offline fails as a connect timeout, which reads as a
+    // broken server. Asking Tailscale first turns that into an answer.
+    const blocked = await this.tailnetObstacle(profile)
+    if (blocked !== undefined) return { ok: false, error: blocked, code: 'tailnet-offline' }
     try {
       const facts = await transport.probe()
       this.facts.set(id, facts)
@@ -336,6 +355,31 @@ export class RemoteRegistry extends Service {
       this.facts.delete(id)
       return { ok: false, error: error instanceof Error ? error.message : String(error), code: error instanceof SshTransportError ? 'ssh-failed' : 'probe-failed' }
     }
+  }
+
+  /**
+   * The local tailnet, for the connect form's peer picker.
+   *
+   * Read-only and best effort: a machine without Tailscale reports unavailable
+   * rather than failing, which is what lets the browser half render the section
+   * only when there is something to show.
+   * @returns the tailnet state, or an unavailable result with the reason.
+   */
+  async tailnet() {
+    return await tailnetStatus({})
+  }
+
+  /**
+   * Why a profile cannot be reached at all, when that is knowable without trying.
+   * @param profile - the profile about to be probed.
+   * @returns the message to report, or undefined when the attempt should proceed.
+   */
+  async tailnetObstacle(profile) {
+    if (!isTailnetAddress(profile.host)) return undefined
+    const tailnet = await this.tailnet()
+    if (!tailnet.available) return `"${profile.host}" looks like a tailnet destination, but Tailscale is not usable here: ${tailnet.error}`
+    if (tailnet.backendState !== 'Running') return `"${profile.host}" looks like a tailnet destination, but the local Tailscale backend is ${tailnet.backendState}.`
+    return tailnetPreflight(profile.host, peerFor(tailnet, profile.host))
   }
 
   /** Directory holding one profile's mirror tree. */

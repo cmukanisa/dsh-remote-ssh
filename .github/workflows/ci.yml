@@ -40,6 +40,8 @@ jobs:
         run: node scripts/check-syntax.mjs
       - name: Unit suite
         run: node test/unit.test.mjs
+      - name: Tailscale suite
+        run: node test/tailscale.test.mjs
       - name: Windows-client transport expectations
         run: node test/windows-client.test.mjs
       - name: Installer suite

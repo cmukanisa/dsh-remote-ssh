@@ -64,6 +64,23 @@ plain HTTP, while a key never makes the trip at all. Reaching the harness from
 another machine over an untrusted network is a harness-level concern, not
 something this plugin can fix.
 
+### Over Tailscale
+
+A tailnet destination adds a second, independent security layer without weakening
+the first:
+
+| Property | How it holds |
+|---|---|
+| Transport encryption | WireGuard, between the two nodes. The plugin does not implement it; Tailscale does. |
+| Host key | In `tailscale` mode the client verifies the destination's key against the one the coordination server advertises, **in addition** to OpenSSH's own `known_hosts` policy. Both have to be satisfied. |
+| Access control | In `tailscale` mode, tailnet ACLs and node identity decide who may connect — so a profile can work with no SSH key on disk at all. |
+| No silent substitution | A MagicDNS name or a `100.64/10` address is only *reported* as a tailnet destination. The transport changes solely because the profile says `transport: tailscale`; the unit suite asserts that distinction. |
+| Offline peers | Reported as offline before the attempt, so a downed machine is never read as an SSH or credential failure. |
+
+`tailscale ssh` is invoked as `tailscale ssh -- <ssh options> <destination>
+<command>`: the wrapper parses its own flags before `--`, so everything the plugin
+configures for ssh is passed after the separator, where it is forwarded unchanged.
+
 ## Design rules that keep it honest
 
 1. SSH stays a **transport detail**. Nothing above the provider seams can tell

@@ -145,6 +145,45 @@ See [`patch/remote-ssh.patch.yml.tpl`](patch/remote-ssh.patch.yml.tpl). They poi
 at absolute paths because a row's relative specifier resolves against the profile
 directory, and this layer is shared by every profile.
 
+## Tailscale
+
+Two different things are called "connecting over Tailscale", and the plugin keeps
+them apart on purpose.
+
+**OpenSSH over the tailnet — nothing to configure.** Point a profile at a MagicDNS
+name (`build-a.example-tailnet.ts.net`) or a `100.x.y.z` address and the real `ssh`
+binary connects over WireGuard. Your keys, your `~/.ssh/config`, and your
+`known_hosts` remain the authority. This is the default and it is unchanged.
+
+**`tailscale ssh` — opt-in per profile.** Choose *Tailscale SSH* in the connect
+form. The Tailscale client then wraps the system `ssh`, which buys three things:
+
+- MagicDNS resolution even with `--accept-dns=false`;
+- reachability through `tailscaled`, so it works in userspace-networking mode;
+- the destination's host key verified against the one the **coordination server**
+  advertises for that node, on top of your normal host-key policy.
+
+Access is then governed by tailnet ACLs and identity rather than by SSH keys on
+disk. The adapter never switches transports on its own: a MagicDNS-looking host is
+*reported* as a tailnet destination (🌐 on the profile chip) but connects through
+plain OpenSSH unless the profile says `tailscale` (⚡).
+
+The connect form also lists your tailnet's peers, read from
+`tailscale status --json`: click one to fill in the MagicDNS name, the tailnet user,
+and — when the peer advertises SSH host keys and therefore runs the Tailscale SSH
+server — the Tailscale SSH transport. A peer Tailscale reports as **offline** is
+named before the attempt, instead of surfacing twenty seconds later as a connect
+timeout.
+
+```sh
+# what the plugin reads, if you want to see it yourself
+tailscale status --json | jq '.Peer[] | {HostName, DNSName, Online, sshHostKeys}'
+```
+
+Requirements: the `tailscale` CLI on the machine running dsh (override with
+`DSH_TAILSCALE_BIN`). A machine without Tailscale reports the tailnet as
+unavailable and everything else keeps working.
+
 ## How a path is routed
 
 | Input | World | Notes |
