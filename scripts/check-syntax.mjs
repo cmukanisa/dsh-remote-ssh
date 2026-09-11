@@ -67,6 +67,23 @@ for (const [name, expectedId] of [
   const ok = text.includes('window.__ModuleLoader__.load(') && text.includes(`id: "${expectedId}"`) && text.includes('exports.apply = apply') && text.includes('exports.inject')
   if (!ok) failures += 1
   process.stdout.write(`${ok ? 'PASS' : 'FAIL'}  ${name} keeps the module-table wrapper for ${expectedId}\n`)
+
+  // A `single` slot REFUSES a second registration at the same priority rather
+  // than shadowing it, and the refusal propagates out of apply() — the whole UI
+  // then shows "Failed to load plugins" instead of this plugin's surface. The
+  // shipped directory picker registers at the default 0, so every registration
+  // into a hole it may already occupy has to name a priority.
+  const singleSlotRegistrations = [...text.matchAll(/name: "([^"]*\.directoryFlow)",([^}]*)}/g)]
+  const prioritised = singleSlotRegistrations.filter((match) => /priority:/.test(match[2]))
+  const allPrioritised = singleSlotRegistrations.length >= 2 && prioritised.length === singleSlotRegistrations.length
+  if (!allPrioritised) failures += 1
+  process.stdout.write(`${allPrioritised ? 'PASS' : 'FAIL'}  ${name} gives every single-occupancy hole an explicit priority (${prioritised.length}/${singleSlotRegistrations.length})\n`)
+
+  // And the fallbacks have to survive a refusal: one contested slot must not take
+  // the launcher and the Settings card down with it.
+  const guarded = text.includes('function registerSafely(') && !/ctx\.slots\.register\(\{ name: "[^"]*\.directoryFlow"/.test(text)
+  if (!guarded) failures += 1
+  process.stdout.write(`${guarded ? 'PASS' : 'FAIL'}  ${name} registers through the guarded helper, so one refusal cannot unload the plugin\n`)
 }
 
 process.stdout.write(failures === 0 ? '\nRESULT: ALL PASS\n' : `\nRESULT: ${failures} FAILURE(S)\n`)

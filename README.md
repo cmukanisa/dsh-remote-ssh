@@ -20,6 +20,21 @@ connected at once, and the whole thing is switched on from **Settings → Plugin
 
 ---
 
+## Updating
+
+Re-run the installer. It rewrites its own composition block, which is enough to
+pick up a new version **without restarting the harness**:
+
+- the **browser half** is served from bytes that `dsh-client-hmr` polls, so
+  replacing the installed bundle changes the revision the page is served and the
+  plugin reloads;
+- a change to the **host half** (`lib/*.js`) is cached by Node's ESM loader, so
+  that one does need a harness restart.
+
+```sh
+node install.mjs       # or the curl one-liner again
+```
+
 ## Why it is built this way
 
 A workspace in dsh is a real local directory: session headers carry a canonical
@@ -66,36 +81,69 @@ Or from a clone:
 ```sh
 git clone https://github.com/cmukanisa/dsh-remote-ssh
 cd dsh-remote-ssh
-node install.mjs            # installs, switched OFF
-node install.mjs --enable   # installs and activates
+node install.mjs            # checks, installs, verifies, activates
 ```
 
-The installer is idempotent and makes exactly three changes:
+**Installing activates the plugin**, and the run is a transaction: it checks every
+requirement first, installs, verifies, and **rolls back to the exact previous state
+if anything does not pass**. A half-installed plugin is worse than none — the loader
+would either fail to boot the profile or boot it with a composition that disables
+the shipped providers and never registers the replacements.
+
+```
+  checking
+  ✓ node        ·························· v24.14.0 (the harness requires >= 22.19)
+  ✓ ssh         ···································· OpenSSH_10.3p1, LibreSSL 3.3.6
+  ✓ tailscale   ················ 1.102.3 — the Tailscale SSH transport is available
+  ✓ harness     ················································· /Users/you/.dsh
+  ✓ writable    ··································· profiles/plugins accepts writes
+  ✓ modules     ················· profiles/node_modules/@deepseek-ai/cordis present
+
+  installing
+  ✓ copied      ········ dsh-remote-ssh → profiles/plugins/dsh-remote-ssh (8 files)
+  ✓ copied      ·· dsh-remote-ssh-ui → profiles/plugins/dsh-remote-ssh-ui (4 files)
+  ✓ patched     ···································· cordis.patch.yml (8 rows)
+  ✓ enabled     ····························· settings.yaml remote-ssh.enabled = true
+
+  verifying
+  ✓ files       ······················································ 12 files in place
+  ✓ composition ·············································· 8 expected rows
+  ✓ setting     ····································· remote-ssh.enabled = true
+  ✓ module      ············· registry.js imports and exports RemoteRegistry
+
+  ──────────────────────────────────────────────────────────────────────────────
+  Done in 0.1s. Reload the harness page, then workspace "+" → "Serveur distant (SSH)".
+```
+
+Three durable changes, idempotent on every re-run:
 
 1. copies the packages into `$DSH_HOME/profiles/plugins/`;
 2. replaces its own managed block in `$DSH_HOME/cordis.patch.yml` (the
    home-level layer, so **every** profile gets the rows);
-3. seeds `$DSH_HOME/settings.yaml` with `remote-ssh.enabled: false`.
+3. writes `$DSH_HOME/settings.yaml` with `remote-ssh.enabled: true`.
 
 | Flag | Effect |
 |---|---|
-| `--enable` | activate immediately instead of waiting for the Settings toggle |
-| `--link` | symlink the packages instead of copying (development) |
-| `--dry-run` | report what would change, touch nothing |
-| `--uninstall` | remove the packages and the composition rows |
+| `--keep-off` | install dormant — for a rollout where activation is audited separately |
+| `--enable` | activate even if a previous run left it switched off |
+| `--link` | symlink the packages instead of copying them (development) |
+| `--dry-run` | run the checks, report the changes, write nothing |
+| `--no-color` | plain output (also honours `NO_COLOR`) |
+| `--uninstall` | remove the packages, the composition rows, and the setting |
 | `--dsh-home DIR` | target a different harness home |
+
+A re-install never flips an existing `remote-ssh.enabled` on its own: that value is
+your answer, and `--enable` is the only thing that overrides it.
 
 ## Activate
 
-The installer deliberately leaves the plugin **off**, so a harness never gains SSH
-access silently:
+It is already active after installing. The switch stays useful for turning it
+**off**: **Settings → Plugins → “Workspaces distants (SSH)”**.
 
-> **Settings → Plugins → “Workspaces distants (SSH)” → click “Désactivé”.**
-
-The switch gates *offering* remote workspaces (the chooser and the sidebar
-launcher). It never gates *routing*: a session already living in a mirror keeps
-reaching its server, because silently falling back to the empty local mirror would
-be worse than any error.
+It gates *offering* remote workspaces (the chooser and the sidebar launcher). It
+never gates *routing*: a session already living in a mirror keeps reaching its
+server, because silently falling back to the empty local mirror would be worse than
+any error.
 
 Then reload the page.
 
@@ -265,6 +313,13 @@ Plusieurs serveurs peuvent être connectés en même temps et restent disponible
 pour toutes les sessions.
 
 ---
+
+## Author
+
+Built by **Christian Kasse** ([@cmukanisa](https://github.com/cmukanisa)) — see the
+[contributors](https://github.com/cmukanisa/dsh-remote-ssh/graphs/contributors)
+for everyone who has helped. Contributions are welcome; start with
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

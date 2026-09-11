@@ -6,6 +6,79 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-11
+
+### Changed
+
+- **Installing activates the plugin.** It used to install dormant and ask you to
+  flip the switch in Settings; installing it *is* the decision. `--keep-off`
+  installs it dormant for a rollout where activation is audited separately, and
+  `--enable` is the only thing that overrides an existing `remote-ssh.enabled`.
+- **The run is a transaction, and anything short of a fully verified install is
+  rolled back.** The composition layer, the settings document, and any package
+  already installed are snapshotted before the first write; a failed copy, a failed
+  write, or a failed check restores every path and says *Installation cancelled.
+  Nothing was left half-applied.* A half-installed plugin is worse than none: the
+  loader would boot a profile whose composition disables the shipped providers
+  without registering the replacements.
+- **The output is a report, in four visible phases** — `checking`, `installing`,
+  `verifying`, `done` — with one aligned row per check and a dotted leader to its
+  result, a header that credits the author, and a closing line that says what to do
+  next. Colour and box-drawing are used only when the terminal supports them:
+  `NO_COLOR`, `TERM=dumb`, `--no-color`, and a non-terminal stdout all fall back to
+  plain text and an ASCII glyph set. `install.sh` prints one compact line and
+  leaves the banner to `install.mjs`, so `curl | sh` shows one header, not two.
+
+### Added
+
+- **Requirement checks before any write**, each with the command that fixes it:
+  Node in the harness's range, an OpenSSH client, a harness home, a writable
+  destination, and the harness module tree reachable from where the packages will
+  sit. Tailscale is reported as available or absent.
+- **Post-install verification**, including a real `import()` of `registry.js` from
+  the installed path — exactly what the Cordis loader does at the next boot. A
+  truncated copy, a lost export, or an unreachable `@deepseek-ai/dsh-*` dependency
+  now fails in the installer, where the message can still be actionable.
+- `--no-color`, a `tailscale` row in the prerequisites, and an **Author** section
+  in the README crediting Christian Kasse (@cmukanisa).
+
+### Fixed
+
+- **A re-install claimed to be waiting for an activation it already had.** Once
+  `remote-ssh.enabled` existed, every later run printed "waiting for activation"
+  regardless of its value, so a working installation read as broken. The installer
+  reads the stored value and reports it.
+- **`--help` printed the harness line**, which belongs to a real run.
+
+### Fixed (0.2.1, continued)
+
+- **The plugin failed to load, blanking the whole UI.** A `single` slot refuses a
+  second registration at the *same* priority instead of shadowing it, and the
+  refusal propagates out of `apply()` — so the browser showed
+  *"Failed to load plugins"* and none of this plugin's surface, or any other
+  plugin's, appeared. The shipped directory picker registers into the workspace
+  holes at the default priority 0; the chooser now asks for -1, which is what the
+  slot system's own message asks for ("register at a different priority to shadow
+  it, lowest renders").
+- **One contested slot can no longer unload the plugin.** Every registration goes
+  through a guarded helper, so a hole occupied at an unexpected priority leaves the
+  sidebar launcher and the Settings card working instead of taking the rest of the
+  plugin down with it.
+- **The local half of the workspace flow is now the plugin's own.** Occupying the
+  hole means owning the whole dialog, so there is an in-app local browser built on
+  `directoryPicker.list`/`createDirectory`, beside a "Système…" button for the OS
+  chooser. A deployment that composes only one of the two backends still gets a
+  working local flow.
+
+### Verified
+
+- **The browser half hot-reloads without restarting or refreshing.** Replacing the
+  installed `client.js` changes the revision `dsh-client-modules` serves — asserted
+  against a running harness, not assumed — because `dsh-client-hmr` polls the
+  bundle artifacts. A page reload is still needed for the *page*, but the plugin
+  does not need a process restart. (The host half is ESM-cached by Node, so a
+  change to `lib/*.js` other than the bundle still needs a restart.)
+
 ## [0.2.0] — 2026-09-11
 
 ### Added
