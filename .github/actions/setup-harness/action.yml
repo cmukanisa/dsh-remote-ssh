@@ -1,0 +1,43 @@
+name: Set up an installed harness
+description: >-
+  Install the published DeepSeek Harness globally and link the plugin's runtime
+  dependencies to it, so the suites test the same packages a user runs instead of
+  a vendored copy that can silently drift.
+
+inputs:
+  dsh-version:
+    description: npm dist-tag or version of @deepseek-ai/dsh to install
+    required: false
+    default: next
+  dsh-home:
+    description: Harness home to initialise
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install the DeepSeek Harness
+      shell: bash
+      run: npm install --global "@deepseek-ai/dsh@${{ inputs.dsh-version }}"
+
+    - name: Initialise a harness home
+      shell: bash
+      env:
+        DSH_HOME: ${{ inputs.dsh-home }}
+      run: |
+        set -eu
+        # Creating a profile from the shipped template is what materialises
+        # $DSH_HOME/profiles and its shared module fallback; it needs no network
+        # beyond the global install above.
+        dsh --profile web --help >/dev/null 2>&1 || true
+        test -d "${DSH_HOME:-$HOME/.dsh}/profiles" || {
+          echo "::error::the harness home was not created; dsh --profile web --help failed"
+          exit 1
+        }
+
+    - name: Link the plugin's runtime dependencies
+      shell: bash
+      env:
+        DSH_HOME: ${{ inputs.dsh-home }}
+      run: node scripts/link-deps.mjs

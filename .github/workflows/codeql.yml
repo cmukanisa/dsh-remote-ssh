@@ -1,0 +1,34 @@
+name: CodeQL
+
+# The plugin runs commands on remote machines on a model's behalf, so the places
+# where untrusted data crosses a boundary (a path or a command fragment reaching
+# a remote shell) are worth a continuous static analysis pass, not only a review.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '27 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze javascript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript

@@ -1,0 +1,29 @@
+{
+  "name": "dsh-remote-ssh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remote SSH workspaces for the DeepSeek Harness — connect a host, pick a folder there, and drive the whole harness against it",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "deps": "node scripts/link-deps.mjs",
+    "check": "node scripts/check-syntax.mjs",
+    "test:unit": "node test/unit.test.mjs",
+    "test:e2e": "node test/fs.test.mjs",
+    "test:harness": "node test/harness.e2e.mjs",
+    "test": "npm run check && npm run test:unit",
+    "ssh:up": "node test/docker/up.mjs",
+    "ssh:down": "node test/docker/down.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "ssh",
+    "remote",
+    "workspace",
+    "agent"
+  ]
+}

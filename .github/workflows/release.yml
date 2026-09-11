@@ -1,0 +1,80 @@
+name: Release
+
+# A tag builds the distributable, proves it installs into a pristine harness home,
+# and publishes it. The install proof is the point: `install.sh` is what a user
+# runs, so a release that cannot be installed is not a release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Build and verify without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: package, verify, publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+
+      - name: Full local suite before packaging
+        run: |
+          node scripts/check-syntax.mjs
+          node test/unit.test.mjs
+          node test/windows-client.test.mjs
+          node test/install.test.mjs
+
+      - name: Build the distributable
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          test -n "$VERSION" || VERSION="0.0.0-dev"
+          mkdir -p dist
+          tar --exclude='./.git' --exclude='./node_modules' --exclude='./dist' \
+              --exclude='./.github' --exclude='./test' \
+              -czf "dist/dsh-remote-ssh-${VERSION}.tar.gz" \
+              ./README.md ./LICENSE ./CONTRIBUTING.md ./SECURITY.md \
+              ./install.sh ./install.mjs ./patch ./packages
+          (cd dist && shasum -a 256 "dsh-remote-ssh-${VERSION}.tar.gz" > "dsh-remote-ssh-${VERSION}.tar.gz.sha256")
+          ls -la dist
+
+      - name: Prove the distributable installs (and refuses to install twice)
+        run: |
+          set -eu
+          export DSH_HOME="$RUNNER_TEMP/release-home"
+          mkdir -p "$DSH_HOME/profiles/web"
+          tar -xzf dist/dsh-remote-ssh-*.tar.gz -C "$RUNNER_TEMP"
+          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME"
+          test -f "$DSH_HOME/profiles/plugins/dsh-remote-ssh/lib/registry.js"
+          grep -q 'id: remote-ssh' "$DSH_HOME/cordis.patch.yml"
+          grep -q 'enabled: false' "$DSH_HOME/settings.yaml"
+          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME"
+          test "$(grep -c '# >>> dsh-remote-ssh' "$DSH_HOME/cordis.patch.yml")" = "1"
+
+      - name: Publish the GitHub release
+        if: startsWith(github.ref, 'refs/tags/') && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "dsh-remote-ssh $GITHUB_REF_NAME" \
+            --generate-notes
+
+      - name: Upload the artifacts for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-remote-ssh-dist
+          path: dist/*
+          if-no-files-found: error

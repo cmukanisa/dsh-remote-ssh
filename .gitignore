@@ -1,0 +1,15 @@
+# Dependencies are linked from an installed harness by `npm run deps`, never vendored.
+node_modules/
+
+# Local test scaffolding.
+.tmp/
+*.log
+dsh-remote-ssh-*.tar.gz
+test/.ssh/
+
+# Editors and operating systems.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

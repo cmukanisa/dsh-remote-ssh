@@ -1,0 +1,109 @@
+name: Portability
+
+# Checks that would only fail on SOME machine. The plugin ships plain JavaScript
+# with no build step and no dependencies of its own, so every avoidable breakage
+# is environmental: a shell script that only runs under bash, a YAML template the
+# loader would reject, an absolute path baked into a file, or a Node API that is
+# newer than the oldest supported runtime.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oldest-node:
+    name: oldest supported Node (${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: ./.github/actions/setup-harness
+      - run: node test/unit.test.mjs
+
+  shell:
+    name: installer shell script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh must be POSIX sh, not bash
+        run: |
+          set -eu
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck >/dev/null
+          shellcheck --shell=sh --severity=warning install.sh
+      - name: install.sh must run under dash
+        run: |
+          set -eu
+          # dash is the strictest common POSIX shell; a bashism fails here.
+          dash -n install.sh
+      - name: The installer must be idempotent
+        run: |
+          set -eu
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          mkdir -p "$DSH_HOME/profiles/web"
+          node install.mjs --dry-run
+          node install.mjs --dry-run
+
+  yaml:
+    name: composition template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: The template must resolve into a real composition
+        run: |
+          set -eu
+          npm install --global yaml@2 >/dev/null
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs'
+            import { parse } from 'yaml'
+            const text = readFileSync('patch/remote-ssh.patch.yml.tpl', 'utf8').split('@@PLUGINS_DIR@@').join('/tmp/plugins')
+            const rows = parse(text)
+            if (!Array.isArray(rows)) throw new Error('the template must be a YAML sequence of patch entries')
+            const ids = rows.flatMap((row) => row.insert ? row.insert.map((entry) => entry.id) : [row.id])
+            for (const required of ['remote-ssh','fs-remote-ssh','shell-remote-ssh','subprocess-remote-ssh','remote-ssh-ui','fs-sandbox','bash-sandbox','subprocess']) {
+              if (!ids.includes(required)) throw new Error('missing row ' + required)
+            }
+            console.log('template declares', ids.length, 'rows')
+          "
+
+  absolute-paths:
+    name: no machine-specific paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shipped code must not contain a home directory
+        run: |
+          set -eu
+          if grep -RIn --exclude-dir=.git --exclude-dir=node_modules -E '(/Users/[a-z]|/home/[a-z]+/|C:\\\\Users)' packages scripts install.mjs install.sh patch; then
+            echo "::error::a machine-specific absolute path is committed"; exit 1
+          fi
+          echo "no machine-specific path found"
+
+  windows-client:
+    name: Windows client path
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+      - name: Windows-specific transport expectations
+        run: node test/windows-client.test.mjs

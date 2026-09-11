@@ -1,0 +1,25 @@
+{
+  "name": "@deepseek-ai/dsh-remote-ssh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remote SSH workspaces for the DeepSeek Harness: connect a host, pick a folder there, and drive the whole harness against it",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./registry": "./lib/registry.js",
+    "./fs": "./lib/fs.js",
+    "./shell": "./lib/shell.js",
+    "./subprocess": "./lib/subprocess.js",
+    "./ssh": "./lib/ssh.js",
+    "./package.json": "./package.json"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "ssh",
+    "remote",
+    "workspace"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,43 @@
+name: CI
+
+# The always-green baseline: no SSH server, no network beyond the npm install of
+# the harness, and no Docker. It runs the parser check and the unit suite on
+# every supported Node on all three platforms, because those are the suites that
+# CAN run everywhere — a red here is a real portability regression.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: ./.github/actions/setup-harness
+      - name: Static check
+        run: node scripts/check-syntax.mjs
+      - name: Unit suite
+        run: node test/unit.test.mjs
+      - name: Windows-client transport expectations
+        run: node test/windows-client.test.mjs
+      - name: Installer suite
+        run: node test/install.test.mjs

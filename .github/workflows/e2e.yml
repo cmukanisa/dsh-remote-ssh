@@ -1,0 +1,209 @@
+name: E2E
+
+# End-to-end over real SSH. Four independent axes are covered because a remote
+# workspace is only "portable" if it survives all of them:
+#
+#   * Linux server  — Alpine (busybox-adjacent) and Debian (GNU) userlands,
+#                     driven from a Linux client, with the filesystem suite and
+#                     the full harness suite.
+#   * macOS server  — a BSD userland: `stat -f` instead of `stat -c`, and the
+#                     long /var/folders temp path that overflows an AF_UNIX
+#                     ControlPath.
+#   * Windows server— asserted to be REFUSED with an actionable message rather
+#                     than silently half-working; Windows also exercises the
+#                     client path with no connection multiplexing.
+#
+# Every job tears its server down, and nothing here needs a secret: the keys are
+# generated per run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-server:
+    name: linux server (${{ matrix.flavour }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavour: alpine
+            dockerfile: test/docker/sshd.Dockerfile
+          - flavour: debian
+            dockerfile: test/docker/sshd-debian.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+
+      - name: Build the SSH target
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/e2e"
+          ssh-keygen -t ed25519 -N '' -f "$RUNNER_TEMP/e2e/id_test" -C dsh-ci
+          docker build -f "${{ matrix.dockerfile }}" \
+            --build-arg AUTHORIZED_KEY="$(cat "$RUNNER_TEMP/e2e/id_test.pub")" \
+            -t dsh-ssh-target .
+          docker run -d --name dsh-ssh-target -p 2223:22 dsh-ssh-target
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if ssh -i "$RUNNER_TEMP/e2e/id_test" -p 2223 -o StrictHostKeyChecking=accept-new \
+                 -o UserKnownHostsFile="$RUNNER_TEMP/e2e/known_hosts" -o BatchMode=yes dsh@127.0.0.1 true 2>/dev/null; then
+              echo "ssh target is up"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::the SSH target never accepted a connection"; docker logs dsh-ssh-target; exit 1
+
+      - name: Filesystem, shell, and subprocess suite
+        env:
+          DSH_SSH_TEST_HOST: 127.0.0.1
+          DSH_SSH_TEST_PORT: '2223'
+          DSH_SSH_TEST_USER: dsh
+          DSH_SSH_TEST_KEY: ${{ runner.temp }}/e2e/id_test
+          DSH_SSH_TEST_KNOWN_HOSTS: ${{ runner.temp }}/e2e/known_hosts
+          DSH_SSH_TEST_ROOT: /home/dsh/work
+        run: node test/fs.test.mjs
+
+      - name: Tear the target down
+        if: always()
+        run: docker rm -f dsh-ssh-target || true
+
+  harness:
+    name: full harness (boot, browser bundle, Remote namespace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+
+      - name: Build the SSH target
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/e2e"
+          ssh-keygen -t ed25519 -N '' -f "$RUNNER_TEMP/e2e/id_test" -C dsh-ci
+          docker build -f test/docker/sshd.Dockerfile \
+            --build-arg AUTHORIZED_KEY="$(cat "$RUNNER_TEMP/e2e/id_test.pub")" -t dsh-ssh-target .
+          docker run -d --name dsh-ssh-target -p 2223:22 dsh-ssh-target
+          sleep 5
+
+      - name: Install the plugin into the harness
+        run: node install.mjs --enable
+
+      - name: Boot the harness
+        run: |
+          set -eu
+          nohup dsh --profile web --port 3099 --no-open > "$RUNNER_TEMP/dsh.log" 2>&1 &
+          for attempt in $(seq 1 40); do
+            if grep -q 'token=' "$RUNNER_TEMP/dsh.log"; then break; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/dsh.log"
+          grep -o 'token=[^ ]*' "$RUNNER_TEMP/dsh.log" | head -1 | cut -d= -f2 > "$RUNNER_TEMP/token"
+          test -s "$RUNNER_TEMP/token"
+
+      - name: Harness suite
+        env:
+          DSH_WEB_TOKEN: ${{ runner.temp }}/token
+        run: |
+          set -eu
+          node test/harness.e2e.mjs \
+            --base http://127.0.0.1:3099 \
+            --token "$(cat "$RUNNER_TEMP/token")" \
+            --host 127.0.0.1 --port 2223 --user dsh \
+            --key "$RUNNER_TEMP/e2e/id_test" --path /home/dsh/work
+
+      - name: Harness log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/dsh.log" || true
+
+      - name: Tear the target down
+        if: always()
+        run: docker rm -f dsh-ssh-target || true
+
+  macos-server:
+    name: macOS server (BSD userland)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+
+      - name: Enable Remote Login and authorise a test key
+        run: |
+          set -eu
+          sudo systemsetup -setremotelogin on
+          mkdir -p "$RUNNER_TEMP/e2e"
+          ssh-keygen -t ed25519 -N '' -f "$RUNNER_TEMP/e2e/id_test" -C dsh-ci
+          mkdir -p "$HOME/.ssh"
+          cat "$RUNNER_TEMP/e2e/id_test.pub" >> "$HOME/.ssh/authorized_keys"
+          chmod 700 "$HOME/.ssh"
+          chmod 600 "$HOME/.ssh/authorized_keys"
+          for attempt in $(seq 1 10); do
+            if ssh -i "$RUNNER_TEMP/e2e/id_test" -o StrictHostKeyChecking=accept-new \
+                 -o UserKnownHostsFile="$RUNNER_TEMP/e2e/known_hosts" -o BatchMode=yes localhost true 2>/dev/null; then
+              echo "macOS sshd is up"; exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::macOS Remote Login never accepted a connection"; exit 1
+
+      - name: Filesystem, shell, and subprocess suite against a BSD server
+        env:
+          DSH_SSH_TEST_HOST: 127.0.0.1
+          DSH_SSH_TEST_PORT: '22'
+          DSH_SSH_TEST_USER: ${{ github.actor }}
+          DSH_SSH_TEST_KEY: ${{ runner.temp }}/e2e/id_test
+          DSH_SSH_TEST_KNOWN_HOSTS: ${{ runner.temp }}/e2e/known_hosts
+          DSH_SSH_TEST_ROOT: ${{ runner.temp }}
+        run: |
+          # The runner account is not `github.actor`; use the real login name.
+          DSH_SSH_TEST_USER="$(id -un)" node test/fs.test.mjs
+
+  windows-server:
+    name: Windows server (must be refused, visibly)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/setup-harness
+
+      - name: Enable the Windows OpenSSH Server and authorise a test key
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null
+          Set-Service -Name sshd -StartupType Automatic
+          Start-Service sshd
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\e2e" | Out-Null
+          ssh-keygen -t ed25519 -N '""' -f "$env:RUNNER_TEMP\e2e\id_test" -C dsh-ci
+          $key = Get-Content "$env:RUNNER_TEMP\e2e\id_test.pub" -Raw
+          Add-Content -Path C:\ProgramData\ssh\administrators_authorized_keys -Value $key
+          # Windows sshd only honours administrators_authorized_keys with these
+          # exact ACLs; without them public-key auth silently fails.
+          icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F" | Out-Null
+          Restart-Service sshd
+          ssh -i "$env:RUNNER_TEMP\e2e\id_test" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$env:RUNNER_TEMP\e2e\known_hosts" -o BatchMode=yes "$env:USERNAME@localhost" whoami
+
+      - name: The probe refuses a non-POSIX server with an actionable message
+        env:
+          DSH_SSH_TEST_KEY: ${{ runner.temp }}\e2e\id_test
+        run: node test/windows-server.expect.mjs 127.0.0.1 22 "$env:USERNAME"
+        shell: pwsh
