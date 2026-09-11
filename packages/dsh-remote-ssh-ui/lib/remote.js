@@ -50,7 +50,7 @@ function asRemoteError(error) {
  * the host-plane registry that owns the durable profiles and the local mirrors.
  */
 export class RemoteSshController extends TypertRemoteService {
-  static inject = ['remoteSsh']
+  static inject = ['remoteSsh', 'remoteSessions']
 
   /**
    * @param ctx - host context carrying the remote registry.
@@ -62,6 +62,11 @@ export class RemoteSshController extends TypertRemoteService {
   /** The registry service. */
   get registry() {
     return this.ctx.remoteSsh
+  }
+
+  /** The detached-work registry. */
+  get sessions() {
+    return this.ctx.remoteSessions
   }
 
   /**
@@ -165,6 +170,70 @@ export class RemoteSshController extends TypertRemoteService {
   }
 
   /**
+   * Detached work: the commands still running on the hosts.
+   *
+   * Each record's state is re-read from its server, so opening the panel shows
+   * what is true NOW rather than what was true when the harness last looked. Only
+   * the most recent records are refreshed: a long-forgotten one costs a round trip
+   * nobody is waiting for.
+   * @returns the sessions, newest first, with fresh state where it was read.
+   */
+  async work() {
+    const records = this.sessions.list()
+    const refreshed = await Promise.all(records.slice(0, 10).map(async (record) => {
+      try {
+        const state = await this.sessions.status(record.id, { tailBytes: 2048 })
+        return { ...record, state: state.state, exitCode: state.exitCode, bytes: state.bytes, tail: state.tail.trim().split('\n').slice(-1)[0] ?? '' }
+      } catch (error) {
+        return { ...record, unreachable: error instanceof Error ? error.message : String(error) }
+      }
+    }))
+    return { sessions: [...refreshed, ...records.slice(10)] }
+  }
+
+  /**
+   * Start one command that will keep running on the host after the harness closes.
+   * @param profileId - which connected host to run on.
+   * @param command - the shell source to run.
+   * @param cwd - remote working directory.
+   * @param label - a short name for the panel.
+   * @returns the created record.
+   */
+  async workStart(profileId, command, cwd, label) {
+    try {
+      const record = await this.sessions.start(profileId, { command, cwd, label })
+      return { id: record.id, pid: record.pid, label: record.label, state: 'running' }
+    } catch (error) {
+      throw asRemoteError(error)
+    }
+  }
+
+  /**
+   * Cut one running command.
+   * @param id - session id.
+   * @returns its state after the signal.
+   */
+  async workStop(id) {
+    try {
+      const state = await this.sessions.stop(id)
+      return { id, state: state.state, exitCode: state.exitCode }
+    } catch (error) {
+      throw asRemoteError(error)
+    }
+  }
+
+  /**
+   * Forget records.
+   * @param id - one session id, or undefined with `finishedOnly`/`all`.
+   * @param finishedOnly - drop what is known to have ended.
+   * @param all - drop everything.
+   * @returns how many were dropped.
+   */
+  async workForget(id, finishedOnly, all) {
+    return { dropped: this.sessions.forget({ id, finishedOnly: finishedOnly === true, all: all === true }) }
+  }
+
+  /**
    * Adopt one remote folder as a workspace: create its local mirror, register
    * the workspace with a host-qualified title, and hand back the local path the
    * add-workspace flow must complete with.
@@ -199,6 +268,6 @@ function crumbsOf(path) {
   return crumbs
 }
 
-markRemote(RemoteSshController.prototype, ['status', 'setEnabled', 'connect', 'test', 'disconnect', 'list', 'makeDirectory', 'adopt'])
+markRemote(RemoteSshController.prototype, ['status', 'setEnabled', 'connect', 'test', 'disconnect', 'list', 'makeDirectory', 'adopt', 'work', 'workStart', 'workStop', 'workForget'])
 
 export default RemoteSshController

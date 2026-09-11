@@ -49,8 +49,17 @@ const AUTHOR = 'Christian Kasse (cmukanisa)'
 const HOMEPAGE = 'https://github.com/cmukanisa/dsh-remote-ssh'
 /** The Node range the harness itself requires. */
 const NODE_FLOOR = '22.19'
+/** Each composition row's module, checked for the shape the loader requires. */
+const ROWS = [
+  { id: 'remote-ssh', module: 'registry.js' },
+  { id: 'fs-remote-ssh', module: 'fs.js' },
+  { id: 'shell-remote-ssh', module: 'shell.js' },
+  { id: 'subprocess-remote-ssh', module: 'subprocess.js' },
+  { id: 'remote-ssh-sessions', module: 'sessions.js' },
+]
+
 /** The rows the composition must end up declaring, disabled providers included. */
-const EXPECTED_ROWS = ['remote-ssh', 'fs-remote-ssh', 'shell-remote-ssh', 'subprocess-remote-ssh', 'remote-ssh-ui', 'fs-sandbox', 'bash-sandbox', 'subprocess']
+const EXPECTED_ROWS = ['remote-ssh', 'fs-remote-ssh', 'shell-remote-ssh', 'subprocess-remote-ssh', 'remote-ssh-sessions', 'remote-ssh-ui', 'fs-sandbox', 'bash-sandbox', 'subprocess']
 
 // ── presentation ─────────────────────────────────────────────────────────────
 
@@ -544,10 +553,25 @@ async function verifyAll(context, expected) {
   if (enabled !== expected.enabled) failed('setting', `remote-ssh.enabled is ${enabled}, expected ${expected.enabled}`)
   else step('ok', 'setting', `remote-ssh.enabled = ${enabled}`)
 
+  // Every row is imported from where the loader will import it, and checked for
+  // the shape the loader requires: a function, or an object with `apply`. An
+  // export that merely exists is not enough — a class exported without `default`
+  // imports cleanly and then fails the whole composition at boot.
+  for (const row of ROWS) {
+    try {
+      const module = await import(pathToFileURL(join(context.pluginsDir, 'dsh-remote-ssh', 'lib', row.module)).href)
+      const candidate = module.default ?? module
+      const loadable = typeof candidate === 'function' || typeof candidate?.apply === 'function'
+      if (!loadable) failed('rows', `${row.module} exports no loadable plugin (needs a function or an "apply")`)
+      else step('ok', 'rows', `${row.module} loads as the loader will call it`)
+    } catch (error) {
+      failed('rows', `${row.module} did not import: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
+    }
+  }
   try {
     const module = await import(pathToFileURL(join(context.pluginsDir, 'dsh-remote-ssh', 'lib', 'registry.js')).href)
     if (typeof module.RemoteRegistry !== 'function') failed('module', 'registry.js exports no RemoteRegistry class')
-    else step('ok', 'module', `registry.js imports and exports RemoteRegistry ${dim('(as the loader will)')}`)
+    else step('ok', 'module', `registry.js exports RemoteRegistry ${dim('(as the loader will use it)')}`)
   } catch (error) {
     failed('module', `registry.js did not import: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
   }

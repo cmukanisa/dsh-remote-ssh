@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-	id: "@deepseek-ai/dsh-remote-ssh-ui",
+	id: "dsh-remote-ssh-ui",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -27,7 +27,7 @@ window.__ModuleLoader__.load({
 		 */
 		const NAMESPACE = "sshWorkspace";
 		/** Locale namespace for every string this plugin shows. */
-		const NS = "@deepseek-ai/dsh-remote-ssh-ui";
+		const NS = "dsh-remote-ssh-ui";
 
 		/**
 		 * Display text, in the three locales the harness resolves from the
@@ -36,6 +36,16 @@ window.__ModuleLoader__.load({
 		 */
 		const dictionaries = {
 			en: {
+				"settings.work": "Remote work",
+				"settings.workEmpty": "Nothing running on a server.",
+				"settings.workKeeps": "Work started here runs on the server and keeps running after you close the harness.",
+				"action.stop": "Stop",
+				"action.refresh": "Refresh",
+				"action.forgetFinished": "Forget finished",
+				"state.running": "running",
+				"state.exited": "finished",
+				"state.gone": "gone",
+				"state.unknown": "unknown",
 				"settings.tailscale": "Tailscale",
 				"settings.tailscaleMissing": "not installed — install it, then press Re-check",
 				"settings.tailscaleAvailable": "available",
@@ -95,6 +105,16 @@ window.__ModuleLoader__.load({
 				"settings.empty": "No server connected yet."
 			},
 			fr: {
+				"settings.work": "Travaux distants",
+				"settings.workEmpty": "Rien ne tourne sur un serveur.",
+				"settings.workKeeps": "Un travail lancé ici s'exécute sur le serveur et continue après la fermeture du harness.",
+				"action.stop": "Arrêter",
+				"action.refresh": "Rafraîchir",
+				"action.forgetFinished": "Oublier les terminés",
+				"state.running": "en cours",
+				"state.exited": "terminé",
+				"state.gone": "disparu",
+				"state.unknown": "inconnu",
 				"settings.tailscale": "Tailscale",
 				"settings.tailscaleMissing": "non installé — installez-le puis cliquez sur Revérifier",
 				"settings.tailscaleAvailable": "disponible",
@@ -154,6 +174,16 @@ window.__ModuleLoader__.load({
 				"settings.empty": "Aucun serveur connecté pour l'instant."
 			},
 			zh: {
+				"settings.work": "远程任务",
+				"settings.workEmpty": "服务器上暂无运行中的任务。",
+				"settings.workKeeps": "在这里启动的任务在服务器上运行，关闭 harness 后仍会继续。",
+				"action.stop": "停止",
+				"action.refresh": "刷新",
+				"action.forgetFinished": "清除已结束",
+				"state.running": "运行中",
+				"state.exited": "已完成",
+				"state.gone": "已消失",
+				"state.unknown": "未知",
 				"settings.tailscale": "Tailscale",
 				"settings.tailscaleMissing": "未安装 — 安装后点击“重新检测”",
 				"settings.tailscaleAvailable": "可用",
@@ -720,6 +750,11 @@ window.__ModuleLoader__.load({
 			const [error, setError] = react.useState(undefined);
 			const [busy, setBusy] = react.useState(false);
 			const [checking, setChecking] = react.useState(false);
+			const [work, setWork] = react.useState([]);
+			const refreshWork = react.useCallback(() => {
+				callHost(ctx, "work", {}).then((value) => setWork(value?.sessions ?? [])).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+			}, [ctx]);
+			react.useEffect(() => { refreshWork(); }, [refreshWork]);
 			const refresh = react.useCallback(() => {
 				callHost(ctx, "status", {}).then(setStatus).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
 			}, [ctx]);
@@ -763,6 +798,28 @@ window.__ModuleLoader__.load({
 				),
 				h("div", { style: { ...styles.note, marginTop: 4 } },
 					status?.tailnet?.available === true ? T("settings.tailscaleNote") : T("settings.tailscaleHint")),
+				h("div", { style: { marginTop: 12, paddingTop: 10, borderTop: `0.5px solid ${C.border}` } },
+					h("div", { style: styles.row },
+						h("span", { style: { ...styles.note, flex: 1 } }, h("strong", { style: { color: C.text } }, T("settings.work")),
+							" ", dim(T("settings.workKeeps"))),
+						h("button", { style: styles.button(false, checking), onClick: refreshWork, disabled: checking }, T("action.refresh")),
+						work.length === 0 ? null : h("button", { style: styles.button(false, false), onClick: () => callHost(ctx, "workForget", { id: undefined, finishedOnly: true }).then(refreshWork) }, T("action.forgetFinished"))
+					),
+					work.length === 0 ? h("div", { style: { ...styles.note, marginTop: 6 } }, T("settings.workEmpty"))
+						: h("ul", { style: { margin: "8px 0 0", padding: 0 } }, work.map((entry) => h("li", {
+							key: entry.id,
+							style: { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13, listStyle: "none" }
+						},
+							h("span", { style: styles.status(entry.state === "running") }, entry.state === "running" ? "●" : "○"),
+							h("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+								entry.label,
+								h("span", { style: styles.note }, `  ${T(STATE_LABEL[entry.state] ?? "state.unknown")}${entry.tail === undefined || entry.tail === "" ? "" : ` · ${entry.tail.slice(0, 60)}`}`)
+							),
+							entry.state === "running"
+								? h("button", { style: styles.button(false, false), onClick: () => callHost(ctx, "workStop", { id: entry.id }).then(refreshWork) }, T("action.stop"))
+								: null
+						)))
+				),
 				status?.profiles?.length > 0 ? h("ul", { style: { margin: "12px 0 0", padding: 0 } },
 					status.profiles.map((profile) => h("li", {
 						key: profile.id,
@@ -776,6 +833,16 @@ window.__ModuleLoader__.load({
 				error === undefined ? null : h("div", { style: styles.error }, error)
 			);
 		}
+
+		/**
+		 * A session state to its locale key.
+		 *
+		 * Spelled out rather than composed from the state name: a key built at
+		 * runtime is invisible to the gate that proves every locale carries every
+		 * string, which is the check that keeps a translation from silently
+		 * disappearing.
+		 */
+		const STATE_LABEL = { running: "state.running", exited: "state.exited", gone: "state.gone", unknown: "state.unknown" };
 
 		/** Cordis plugin body: register the occupant, the launcher, and the card. */
 		/**

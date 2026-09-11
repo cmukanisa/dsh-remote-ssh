@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dsh-remote-ssh — 使用文档</title>
+<title>DeepSeek Harness 远程工作区 — 像使用本地目录一样使用远程服务器</title>
 <meta name="description" content="通过 SSH 连接一台服务器，选择其中的文件夹并直接在其中工作：Agent 用已有的全部工具在远端读取、写入、修改、列目录、搜索并执行 shell 命令。">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body>
 <header class="site">
   <div class="inner">
-    <a class="brand" href="../" style="color:inherit">dsh<span>-</span>remote<span>-</span>ssh</a>
+    <a class="brand" href="../" style="color:inherit">DeepSeek Harness <span>Remote Workspace</span></a>
     <nav class="langs">
       <a href="../fr/" onclick="remember('fr')">Français</a>
       <a href="../en/" onclick="remember('en')">English</a>
@@ -21,7 +21,8 @@
 
 <main>
   <div class="hero">
-    <h1>像使用本地目录一样使用远程服务器</h1>
+    <h1>DeepSeek Harness 远程工作区</h1>
+    <p class="headline">像使用本地目录一样使用远程服务器</p>
     <p class="lead">通过 SSH 连接一台主机，选择其中的文件夹，然后直接在其中工作。Agent 会用已有的
       全部工具在远端读取、写入、修改、列目录、搜索并执行 shell 命令。连接由所有会话共享，可同时连接
       多台服务器，并可在<strong>设置 → 插件</strong>中一键启用。</p>
@@ -136,6 +137,21 @@
   </section>
 
   <section>
+    <h2>比 harness 活得更久的任务</h2>
+    <p>Agent 循环运行在 harness 进程内，因此关闭它会结束当前回合。能够继续的是<strong>命令</strong>本身，
+      关键在于将其分离：插件在服务器上写入一个小型启动脚本，让它在自己的会话中运行，并把输出写到服务端的
+      日志文件。</p>
+    <ul>
+      <li><strong>随时关闭 harness。</strong>远端进程会继续运行。</li>
+      <li><strong>回来即可看到。</strong>设置 → 插件会列出每个任务的实时状态——运行中、已结束（含退出码）
+        或已消失——以及最近的输出。</li>
+      <li><strong>想停就停。</strong>运行中的条目有停止按钮，会向整个进程组发送信号，子进程一并停止。</li>
+    </ul>
+    <p class="note">无需配置：在远程工作区启动的任务默认分离运行，每个任务在
+      <code>$DSH_HOME/remotes-sessions.json</code> 中有一条持久记录，由所有会话共享。</p>
+  </section>
+
+  <section>
     <h2>更新</h2>
     <p>重新运行安装器即可。它会重写自己的组合配置块，这足以启用新版本而<strong>无需重启
       harness</strong>：</p>
@@ -190,6 +206,7 @@
     <a href="https://github.com/cmukanisa/dsh-remote-ssh">代码仓库</a> ·
     <a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">版本发布</a>
   </div>
+  <div class="inner" style="margin-top:0.6rem">与 DeepSeek 无隶属关系。“DeepSeek Harness” 是 DeepSeek 的商标，此处仅用于说明本插件构建于其上。</div>
 </footer>
 
 <script>

@@ -43,6 +43,13 @@
     - id: subprocess-remote-ssh
       name: @@PLUGINS_DIR@@/dsh-remote-ssh/lib/subprocess.js
 
+    # Detached remote work: commands that keep running on the host after the
+    # harness closes, with a durable record so a later session re-attaches.
+    - id: remote-ssh-sessions
+      name: @@PLUGINS_DIR@@/dsh-remote-ssh/lib/sessions.js
+      config:
+        path: !!js dshHomePath('remotes-sessions.json')
+
     # One row owns the browser half: `dsh-client-modules` resolves the nearest
     # package.json for this row and serves the `./client` bundle it declares.
     - id: remote-ssh-ui

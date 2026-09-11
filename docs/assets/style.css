@@ -113,6 +113,8 @@ main { max-width: var(--width); margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
 
 .hero { padding: 1.5rem 0 2rem; }
 .hero h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; margin: 0 0 0.6rem; letter-spacing: -0.02em; }
+.hero p.headline { font-size: clamp(1.05rem, 2vw, 1.35rem); color: var(--accent); margin: 0 0 0.8rem; font-weight: 550; }
+
 .hero p.lead { font-size: 1.12rem; color: var(--muted); margin: 0 0 1.4rem; max-width: 46rem; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }

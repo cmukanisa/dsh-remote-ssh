@@ -67,7 +67,7 @@ process.stdout.write(`${failures === 0 ? 'PASS' : 'FAIL'}  ${scripts.length} shi
 // wrapper contract is checked as data: a bundle that stops registering its id
 // silently disappears from the UI instead of raising anywhere.
 for (const [name, expectedId] of [
-  ['packages/dsh-remote-ssh-ui/lib/client.js', '@deepseek-ai/dsh-remote-ssh-ui'],
+  ['packages/dsh-remote-ssh-ui/lib/client.js', 'dsh-remote-ssh-ui'],
 ]) {
   const text = readFileSync(join(ROOT, name), 'utf8')
   const ok = text.includes('window.__ModuleLoader__.load(') && text.includes(`id: "${expectedId}"`) && text.includes('exports.apply = apply') && text.includes('exports.inject')
@@ -94,13 +94,21 @@ for (const [name, expectedId] of [
   // Every displayed string is a locale key, and every key exists in every
   // dictionary. A missing key renders as the key itself in that language, which
   // is a silent regression no test would otherwise catch.
-  const usedKeys = new Set([...text.matchAll(/T\("([^"]+)"/g)].map((match) => match[1]))
+  // A key counts as used when it appears as a literal anywhere in the bundle,
+  // not only as `T("key")`: a key reached through a lookup table is still a key
+  // the bundle can display, and requiring the call form would force every table
+  // to be inlined.
+  const literals = new Set([...text.matchAll(/"([^"\n]+)"/g)].map((match) => match[1]))
   const blocks = [...text.matchAll(/\n\t\t\t(en|fr|zh): \{([\s\S]*?)\n\t\t\t\}/g)]
   check(`${name} declares the fr, en, and zh dictionaries`, blocks.length === 3, blocks.map((block) => block[1]).join(','))
+  const reference = new Set(blocks.length === 0 ? [] : [...blocks[0][2].matchAll(/"([^"]+)":/g)].map((match) => match[1]))
   for (const [, locale, body] of blocks) {
     const defined = new Set([...body.matchAll(/"([^"]+)":/g)].map((match) => match[1]))
-    const missing = [...usedKeys].filter((key) => !defined.has(key))
-    const unused = [...defined].filter((key) => !usedKeys.has(key))
+    // Missing is measured against the FIRST dictionary, so a key added to one
+    // locale and forgotten in another is what this reports — not a key the source
+    // happens to reach dynamically.
+    const missing = [...reference].filter((key) => !defined.has(key))
+    const unused = [...defined].filter((key) => !literals.has(key))
     const ok = missing.length === 0 && unused.length === 0
     if (!ok) failures += 1
     process.stdout.write(`${ok ? 'PASS' : 'FAIL'}  ${name} ${locale}: ${defined.size} keys, ${missing.length} missing${missing.length > 0 ? ` (${missing.join(',')})` : ''}, ${unused.length} unused${unused.length > 0 ? ` (${unused.join(',')})` : ''}\n`)

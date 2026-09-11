@@ -115,7 +115,7 @@ check('contains() is canonical for remote targets', fs.contains({ targetKey: pro
 // ── the Remote namespace descriptor ──────────────────────────────────────────
 const controller = new RemoteSshController(ctx)
 const methods = remoteMethods(controller).map((marker) => marker.exportName ?? marker.method)
-equals('every Remote method is published', methods.sort(), ['adopt', 'connect', 'disconnect', 'list', 'makeDirectory', 'setEnabled', 'status', 'test'])
+equals('every Remote method is published', methods.sort(), ['adopt', 'connect', 'disconnect', 'list', 'makeDirectory', 'setEnabled', 'status', 'test', 'work', 'workForget', 'workStart', 'workStop'])
 equals('the namespace is the one the browser calls', controller.typertRemote.namespace, 'sshWorkspace')
 equals('the service key matches the binding', controller.typertRemote.serviceKey, 'remoteSshController')
 check('a hand-built prototype is also accepted', (() => {

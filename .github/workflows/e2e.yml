@@ -76,6 +76,16 @@ jobs:
           DSH_SSH_TEST_ROOT: /home/dsh/work
         run: node test/fs.test.mjs
 
+      - name: Detached work suite (survives the harness closing)
+        env:
+          DSH_SSH_TEST_HOST: 127.0.0.1
+          DSH_SSH_TEST_PORT: '2223'
+          DSH_SSH_TEST_USER: dsh
+          DSH_SSH_TEST_KEY: ${{ runner.temp }}/e2e/id_test
+          DSH_SSH_TEST_KNOWN_HOSTS: ${{ runner.temp }}/e2e/known_hosts
+          DSH_SSH_TEST_ROOT: /home/dsh/work
+        run: node test/sessions.test.mjs
+
       - name: Tear the target down
         if: always()
         run: docker rm -f dsh-ssh-target || true

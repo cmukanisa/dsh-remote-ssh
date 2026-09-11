@@ -92,6 +92,7 @@ export const PROBE_SCRIPT = [
   'if command -v bash >/dev/null 2>&1; then printf "shell=%s\\n" "$(command -v bash)"; else printf "shell=%s\\n" "$(command -v sh || echo sh)"; fi',
   'if command -v rg >/dev/null 2>&1; then printf "rg=%s\\n" "$(command -v rg)"; fi',
   'if command -v realpath >/dev/null 2>&1; then printf "realpath=1\\n"; else printf "realpath=0\\n"; fi',
+  'if command -v setsid >/dev/null 2>&1; then printf "setsid=1\\n"; else printf "setsid=0\\n"; fi',
   'if stat -Lc %s . >/dev/null 2>&1; then printf "stat=gnu\\n"; elif stat -Lf %z . >/dev/null 2>&1; then printf "stat=bsd\\n"; else printf "stat=none\\n"; fi',
   'if printf aGk= | base64 -d >/dev/null 2>&1; then printf "base64d=-d\\n"; elif printf aGk= | base64 -D >/dev/null 2>&1; then printf "base64d=-D\\n"; fi',
   'printf "home=%s\\n" "$HOME"',
@@ -107,7 +108,7 @@ export const PROBE_SCRIPT = [
  * @returns the discovered facts, `platform: 'unknown'` when the shell answered nothing usable.
  */
 export function parseProbeOutput(text) {
-  const facts = { platform: 'unknown', shell: 'sh', rg: undefined, realpath: false, stat: 'none', base64d: undefined, home: undefined, user: undefined }
+  const facts = { platform: 'unknown', shell: 'sh', rg: undefined, realpath: false, setsid: false, stat: 'none', base64d: undefined, home: undefined, user: undefined }
   for (const line of text.split('\n')) {
     const index = line.indexOf('=')
     if (index <= 0) continue
@@ -117,6 +118,7 @@ export function parseProbeOutput(text) {
     else if (key === 'shell') facts.shell = value
     else if (key === 'rg') facts.rg = value
     else if (key === 'realpath') facts.realpath = value === '1'
+    else if (key === 'setsid') facts.setsid = value === '1'
     else if (key === 'stat') facts.stat = value
     else if (key === 'base64d') facts.base64d = value
     else if (key === 'home') facts.home = value
