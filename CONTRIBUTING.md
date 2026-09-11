@@ -149,7 +149,34 @@ rule is: **one round trip per user-visible operation**, not one per internal ste
 `listDir` is a single NUL-delimited scan for that reason, and realpath results are
 cached for two seconds and invalidated on every mutation.
 
-## 5. Pull requests
+## 5. How changes land
+
+`main` is protected: it takes pull requests, not pushes, and every required check
+must be green first. The flow is
+
+```sh
+git checkout -b fix/short-description
+# ...work...
+git push -u origin fix/short-description
+gh pr create --fill
+```
+
+Three workflows post a stable check name that `main` requires — `ci-gate`,
+`e2e-gate`, and `portability-gate` — each of which aggregates its own matrix so
+branch protection needs one context per workflow instead of every expansion.
+
+The **PR bot** (`.github/workflows/pr-bot.yml`) then analyzes the pull request,
+comments a per-area summary, and arms GitHub's native auto-merge (squash) **only**
+when the author is a trusted actor and the change touches neither
+`.github/workflows/` nor `install.sh` — those two run with repository permissions
+and deserve a human read. External contributions always wait for a maintainer.
+
+The bot runs on `pull_request_target`, which is the only trigger that sees fork
+PRs with a write token. It therefore never checks out, imports, or executes the
+pull request's code: it reads the API only. Anything that needs the PR's files
+belongs in `.github/workflows/ci.yml`, which runs with a read-only token.
+
+## 6. Pull requests
 
 - One concern per PR; a behaviour change gets a test in the same PR.
 - Conventional commit subjects (`feat:`, `fix:`, `test:`, `docs:`, `ci:`).
@@ -157,7 +184,7 @@ cached for two seconds and invalidated on every mutation.
   which userland (`Alpine`, `Debian`, `macOS`) when it matters.
 - If you touched the transport, say which `ssh` version you tested with.
 
-## 6. Reporting a bug
+## 7. Reporting a bug
 
 Include:
 
@@ -168,6 +195,6 @@ Include:
 
 **Do not paste secrets, private keys, or `remotes.json`.**
 
-## 7. License
+## 8. License
 
 By contributing you agree your work is released under the [MIT License](LICENSE).

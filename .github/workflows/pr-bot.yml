@@ -1,0 +1,106 @@
+name: PR bot
+
+# Analyzes a pull request and, when it is safe to do so, hands the merge to
+# GitHub's native auto-merge so it lands by itself once the required checks are
+# green.
+#
+# SECURITY: this workflow runs with a write token on `pull_request_target`, which
+# is the only trigger that sees fork PRs with permission to comment. It therefore
+# NEVER checks out, imports, or executes the pull request's code — it reads the
+# API only. Anything that needs the PR's files belongs in ci.yml, which runs with
+# a read-only token.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-bot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze and arm auto-merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize the change
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              per_page: 100,
+            })
+            const byArea = new Map()
+            for (const file of files) {
+              const area = file.filename.startsWith('.github/') ? 'CI and workflows'
+                : file.filename.startsWith('packages/dsh-remote-ssh-ui/') ? 'browser surface'
+                : file.filename.startsWith('packages/dsh-remote-ssh/') ? 'host capability'
+                : file.filename.startsWith('install') ? 'installer'
+                : file.filename.startsWith('patch/') ? 'composition'
+                : file.filename.startsWith('test/') || file.filename.startsWith('scripts/') ? 'tests'
+                : 'documentation'
+              const entry = byArea.get(area) ?? { count: 0, additions: 0, deletions: 0 }
+              entry.count += 1
+              entry.additions += file.additions
+              entry.deletions += file.deletions
+              byArea.set(area, entry)
+            }
+            const rows = [...byArea.entries()]
+              .sort((a, b) => b[1].count - a[1].count)
+              .map(([area, value]) => `| ${area} | ${value.count} | +${value.additions} / -${value.deletions} |`)
+              .join('\n')
+
+            // Untrusted authors get an analysis, never a merge: the labels below
+            // are what arms auto-merge, and only a trusted actor can set them.
+            const trusted = ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(pr.author_association)
+            const risky = files.some((file) => file.filename.startsWith('.github/workflows/') || file.filename === 'install.sh')
+            const body = [
+              '### PR analysis',
+              '',
+              `**Author:** @${pr.user.login} (\`${pr.author_association}\`)`,
+              `**Files:** ${files.length} — ${files.reduce((sum, file) => sum + file.additions, 0)} additions, ${files.reduce((sum, file) => sum + file.deletions, 0)} deletions`,
+              '',
+              '| Area | Files | Lines |',
+              '| --- | --- | --- |',
+              rows,
+              '',
+              risky
+                ? ':warning: This PR touches CI workflows or the installer. Auto-merge is withheld: those files run with repository permissions and deserve a human read.'
+                : trusted
+                  ? ':robot: Trusted author and no CI/installer change: auto-merge (squash) is armed and will land once every required check is green.'
+                  : ':information_source: External contribution: a maintainer must approve before this can merge.',
+              '',
+              '<sub>Posted by the PR bot. It never executes pull-request code.</sub>',
+            ].join('\n')
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body,
+            })
+
+            const shouldArm = trusted && !risky && !pr.draft
+            if (!shouldArm) return
+
+            try {
+              await github.graphql(`
+                mutation ($id: ID!) {
+                  enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) {
+                    pullRequest { number }
+                  }
+                }`, { id: pr.node_id })
+            } catch (error) {
+              // Auto-merge is unavailable (disabled, or the repository settings
+              // forbid it). The analysis still posted; a maintainer merges.
+              core.warning(`auto-merge was not armed: ${error.message}`)
+            }

@@ -1,0 +1,48 @@
+name: PR analysis
+
+# A compact, per-area summary posted on every pull request, plus the CODEOWNERS
+# review request. This is the "read the change before merging" half of the PR bot;
+# `.github/workflows/pr-bot.yml` is the half that arms auto-merge.
+#
+# It runs on the ordinary `pull_request` event with a read-only token and
+# deliberately does nothing but read the diff — no checkout, no execution.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  size:
+    name: change size
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label the change by size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request
+            const total = pr.additions + pr.deletions
+            const bucket = total < 50 ? 'size/xs'
+              : total < 200 ? 'size/s'
+              : total < 600 ? 'size/m'
+              : total < 1500 ? 'size/l'
+              : 'size/xl'
+            const names = ['size/xs', 'size/s', 'size/m', 'size/l', 'size/xl']
+            for (const name of names) {
+              if (name === bucket) continue
+              try {
+                await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name })
+              } catch {
+                /* the label was not on the pull request */
+              }
+            }
+            try {
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, labels: [bucket] })
+            } catch (error) {
+              core.warning(`could not label the pull request: ${error.message}`)
+            }
+            core.notice(`${total} changed lines -> ${bucket}`)

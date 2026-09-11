@@ -197,28 +197,38 @@ jobs:
           $key = "$env:RUNNER_TEMP\e2e\id_test"
           ssh-keygen -t ed25519 -N '""' -f $key -q
 
-          # A DEDICATED STANDARD account, not the runner's administrator: Windows
-          # sshd reads administrators' keys from
-          # C:\ProgramData\ssh\administrators_authorized_keys with exact ACL
-          # requirements, and that file is the usual reason a Windows SSH test
-          # cannot log in. A standard user gets the ordinary per-home file.
+          # A DEDICATED STANDARD account, never the runner's administrator:
+          # Windows sshd reads an administrator's keys from
+          # C:\ProgramData\ssh\administrators_authorized_keys, whose exact ACL and
+          # ownership requirements are the usual reason a Windows SSH test cannot
+          # log in. A standard account uses the ordinary per-home file.
+          #
+          # `New-LocalUser` rather than `net user`: `net` answers "No valid
+          # response was provided" on this image and the account is never created.
           $user = 'dshci'
-          $password = 'DshCI-' + [guid]::NewGuid().ToString('N').Substring(0, 12) + '!'
-          net user $user $password /add | Out-Null
+          $password = ConvertTo-SecureString -String 'DshCI-Test-Only-1!' -AsPlainText -Force
+          if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name $user -Password $password -PasswordNeverExpires -AccountNeverExpires -Description 'dsh-remote-ssh CI' | Out-Null
+          }
+
           $homeDir = "C:\Users\$user"
           New-Item -ItemType Directory -Force -Path "$homeDir\.ssh" | Out-Null
           Set-Content -Path "$homeDir\.ssh\authorized_keys" -Value (Get-Content "$key.pub") -Encoding ascii
-          icacls "$homeDir\.ssh" /inheritance:r /grant "${user}:F" /grant "SYSTEM:F" /grant "Administrators:F" | Out-Null
+          # StrictModes: the entry file may be writable by the account and by
+          # SYSTEM, and by nobody else.
+          icacls "$homeDir" /grant "${user}:(OI)(CI)F" | Out-Null
+          icacls "$homeDir\.ssh" /inheritance:r /grant "${user}:F" /grant "SYSTEM:F" | Out-Null
           icacls "$homeDir\.ssh\authorized_keys" /inheritance:r /grant "${user}:F" /grant "SYSTEM:F" | Out-Null
           Restart-Service sshd
           Start-Sleep -Seconds 5
 
           for ($attempt = 1; $attempt -le 8; $attempt++) {
             ssh -i $key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$env:RUNNER_TEMP\e2e\known_hosts" -o BatchMode=yes "$user@localhost" 'echo AUTH_OK'
-            if ($LASTEXITCODE -eq 0) { Write-Host "Windows sshd accepted the key"; exit 0 }
+            if ($LASTEXITCODE -eq 0) { Write-Host 'the Windows sshd accepted the key'; exit 0 }
+            Get-Content C:\ProgramData\ssh\logs\sshd.log -Tail 15 -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 4
           }
-          Write-Host "::error::the Windows SSH server never accepted the key"
+          Write-Host '::error::the Windows SSH server never accepted the key'
           exit 1
 
       - name: The probe refuses a non-POSIX server with an actionable message
@@ -231,3 +241,19 @@ jobs:
           Get-Service sshd | Format-List
           Get-Content C:\ProgramData\ssh\logs\sshd.log -Tail 40 -ErrorAction SilentlyContinue
           Get-Content "C:\Users\dshci\.ssh\authorized_keys" -ErrorAction SilentlyContinue
+
+  e2e-gate:
+    name: e2e-gate
+    # Stable check name for branch protection: a matrix job's name changes with
+    # the matrix, this one does not, so `main` can require exactly one context
+    # per workflow instead of every expansion of every matrix.
+    if: always()
+    needs: [linux-server, harness, macos-server, windows-server]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: |
+          echo "::error::a required job failed, was cancelled, or was skipped"
+          exit 1
+      - run: echo "every required job passed"
