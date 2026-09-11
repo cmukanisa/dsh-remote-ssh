@@ -34,8 +34,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Added
 
 - **The interface is localized in English, French, and Chinese**, following the
