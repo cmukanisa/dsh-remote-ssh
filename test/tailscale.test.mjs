@@ -102,8 +102,19 @@ check('an unavailable tailnet carries an actionable reason', typeof missing.erro
 // MagicDNS suffix or a real tailnet name replaces the invented ones.
 const suite = readFileSync(new URL(import.meta.url), 'utf8')
 const inventedSuffix = 'example-tailnet.ts.net'
-const realSuffixes = [...suite.matchAll(/[a-z0-9-]+\.([a-z0-9-]+\.ts\.net)/g)].map((match) => match[1]).filter((suffix) => suffix !== inventedSuffix)
-check('no real MagicDNS suffix is committed', realSuffixes.length === 0, [...new Set(realSuffixes)].join(','))
+// Tokenise rather than regex-match: a pattern loose enough to find a MagicDNS
+// name anywhere in a file is also loose enough to be worth anchoring, and an
+// anchored one would miss a name in the middle of a line. Splitting on the
+// characters that can delimit a token needs no such trade.
+const allowed = (token) => token === inventedSuffix || token.endsWith(`.${inventedSuffix}`)
+// A fixture writes a MagicDNS name the way the daemon does — with a trailing root
+// dot — so the dot is stripped before testing. The bare suffix in this file's own
+// code is not a domain: a candidate must carry at least one host label in front.
+const realSuffixes = [...new Set(suite
+  .split(/[\s"'`(),;:[\]{}<>]+/)
+  .map((token) => token.replace(/\.$/, ''))
+  .filter((token) => token.length > '.ts.net'.length && token.endsWith('.ts.net') && !allowed(token)))]
+check('no real MagicDNS suffix is committed', realSuffixes.length === 0, realSuffixes.join(','))
 check('the fixture uses a documentation-only tailnet name', FIXTURE.CurrentTailnet.Name === 'example.invalid')
 
 process.stdout.write(`${report.join('\n')}\n`)
