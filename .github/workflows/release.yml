@@ -53,14 +53,31 @@ jobs:
         run: |
           set -eu
           export DSH_HOME="$RUNNER_TEMP/release-home"
-          mkdir -p "$DSH_HOME/profiles/web"
+          # The installer refuses to write before it has confirmed the harness
+          # module tree is reachable from the destination — the one requirement
+          # whose absence is otherwise silent until boot. A pristine home has no
+          # such tree, so the workspace's linked packages stand in for it, which
+          # is exactly what the loader will resolve at boot.
+          mkdir -p "$DSH_HOME/profiles/web" "$DSH_HOME/profiles/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules/@deepseek-ai" "$DSH_HOME/profiles/node_modules/@deepseek-ai"
           tar -xzf dist/dsh-remote-ssh-*.tar.gz -C "$RUNNER_TEMP"
-          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME"
+          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME" > "$RUNNER_TEMP/install.log" 2>&1
           test -f "$DSH_HOME/profiles/plugins/dsh-remote-ssh/lib/registry.js"
           grep -q 'id: remote-ssh' "$DSH_HOME/cordis.patch.yml"
-          grep -q 'enabled: false' "$DSH_HOME/settings.yaml"
-          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME"
+          # The YAML shape, not the report text: settings.yaml is a document.
+          grep -q '^  enabled: true$' "$DSH_HOME/settings.yaml"
+          # The verification phase really imported the host module; that row is
+          # printed only when the import succeeded.
+          grep -q 'registry.js imports and exports RemoteRegistry' "$RUNNER_TEMP/install.log"
+          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME" > /dev/null 2>&1
           test "$(grep -c '# >>> dsh-remote-ssh' "$DSH_HOME/cordis.patch.yml")" = "1"
+          # The same tarball must also install dormant on request, which is the
+          # path a fleet rollout uses.
+          DORMANT="$RUNNER_TEMP/dormant-home"
+          mkdir -p "$DORMANT/profiles/web" "$DORMANT/profiles/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules/@deepseek-ai" "$DORMANT/profiles/node_modules/@deepseek-ai"
+          node "$RUNNER_TEMP/install.mjs" --dsh-home "$DORMANT" --keep-off > /dev/null 2>&1
+          grep -q '^  enabled: false$' "$DORMANT/settings.yaml"
 
       - name: Publish the GitHub release
         if: startsWith(github.ref, 'refs/tags/') && inputs.dry-run != true
