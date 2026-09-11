@@ -197,42 +197,42 @@ jobs:
           $key = "$env:RUNNER_TEMP\e2e\id_test"
           ssh-keygen -t ed25519 -N '""' -f $key -q
 
-          # A DEDICATED STANDARD account, never the runner's administrator:
-          # Windows sshd reads an administrator's keys from
-          # C:\ProgramData\ssh\administrators_authorized_keys, whose exact ACL and
-          # ownership requirements are the usual reason a Windows SSH test cannot
-          # log in. A standard account uses the ordinary per-home file.
-          #
-          # `New-LocalUser` rather than `net user`: `net` answers "No valid
-          # response was provided" on this image and the account is never created.
-          $user = 'dshci'
-          $password = ConvertTo-SecureString -String 'DshCI-Test-Only-1!' -AsPlainText -Force
-          if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
-            New-LocalUser -Name $user -Password $password -PasswordNeverExpires -AccountNeverExpires -Description 'dsh-remote-ssh CI' | Out-Null
-          }
-
-          $homeDir = "C:\Users\$user"
-          New-Item -ItemType Directory -Force -Path "$homeDir\.ssh" | Out-Null
-          Set-Content -Path "$homeDir\.ssh\authorized_keys" -Value (Get-Content "$key.pub") -Encoding ascii
-          # StrictModes: the entry file may be writable by the account and by
-          # SYSTEM, and by nobody else.
-          icacls "$homeDir" /grant "${user}:(OI)(CI)F" | Out-Null
-          icacls "$homeDir\.ssh" /inheritance:r /grant "${user}:F" /grant "SYSTEM:F" | Out-Null
-          icacls "$homeDir\.ssh\authorized_keys" /inheritance:r /grant "${user}:F" /grant "SYSTEM:F" | Out-Null
+          # This fixture exists to assert the SHELL DIALECT of a Windows server,
+          # not Windows' key hygiene. It therefore pins one key file globally and
+          # relaxes StrictModes, which removes the entire class of failures that
+          # comes from ACLs, ownership, and profile directories:
+          #   * creating a local account needs a policy-compliant password and a
+          #     home directory before sshd will read ~/.ssh/authorized_keys;
+          #   * the runner administrator's keys must go through
+          #     administrators_authorized_keys with exact ACLs.
+          # The shipped sshd_config ends with a `Match Group administrators`
+          # block pointing at that second file, so those two lines are dropped
+          # first: a later Match block would override the global directives.
+          $config = 'C:\ProgramData\ssh\sshd_config'
+          $keys = 'C:\ProgramData\ssh\ci_authorized_keys'
+          Set-Content -Path $keys -Value (Get-Content "$key.pub") -Encoding ascii
+          $filtered = Get-Content $config | Where-Object { $_ -notmatch 'administrators_authorized_keys' -and $_ -notmatch '^\s*Match\s+Group\s+administrators' }
+          $directives = @(
+            'PubkeyAuthentication yes',
+            'StrictModes no',
+            'AuthorizedKeysFile C:/ProgramData/ssh/ci_authorized_keys'
+          )
+          Set-Content -Path $config -Value ($directives + $filtered) -Encoding ascii
           Restart-Service sshd
           Start-Sleep -Seconds 5
 
-          for ($attempt = 1; $attempt -le 8; $attempt++) {
-            ssh -i $key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$env:RUNNER_TEMP\e2e\known_hosts" -o BatchMode=yes "$user@localhost" 'echo AUTH_OK'
+          for ($attempt = 1; $attempt -le 10; $attempt++) {
+            ssh -i $key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$env:RUNNER_TEMP\e2e\known_hosts" -o BatchMode=yes "$env:USERNAME@localhost" 'echo AUTH_OK'
             if ($LASTEXITCODE -eq 0) { Write-Host 'the Windows sshd accepted the key'; exit 0 }
-            Get-Content C:\ProgramData\ssh\logs\sshd.log -Tail 15 -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 4
           }
           Write-Host '::error::the Windows SSH server never accepted the key'
+          Get-Content C:\ProgramData\ssh\logs\sshd.log -Tail 30 -ErrorAction SilentlyContinue
           exit 1
 
       - name: The probe refuses a non-POSIX server with an actionable message
-        run: node test/windows-server.expect.mjs 127.0.0.1 22 dshci "${{ runner.temp }}\e2e\id_test"
+        shell: pwsh
+        run: node test/windows-server.expect.mjs 127.0.0.1 22 "$env:USERNAME" "$env:RUNNER_TEMP\e2e\id_test"
 
       - name: Windows sshd diagnostics
         if: failure()
@@ -240,7 +240,8 @@ jobs:
         run: |
           Get-Service sshd | Format-List
           Get-Content C:\ProgramData\ssh\logs\sshd.log -Tail 40 -ErrorAction SilentlyContinue
-          Get-Content "C:\Users\dshci\.ssh\authorized_keys" -ErrorAction SilentlyContinue
+          Get-Content C:\ProgramData\ssh\ci_authorized_keys -ErrorAction SilentlyContinue
+          ssh -i "$env:RUNNER_TEMP\e2e\id_test" -o StrictHostKeyChecking=no -o UserKnownHostsFile="$env:RUNNER_TEMP\e2e\known_hosts" -o BatchMode=yes -v "$env:USERNAME@localhost" whoami 2>&1 | Select-Object -Last 25
 
   e2e-gate:
     name: e2e-gate
