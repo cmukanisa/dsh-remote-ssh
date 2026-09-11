@@ -47,6 +47,12 @@ const files = ROOTS.flatMap((root) => {
 const scripts = files.filter((file) => file.endsWith('.mjs') || file.endsWith('.js'))
 let failures = 0
 
+/** Record one assertion and print its verdict. */
+const check = (name, ok, detail = '') => {
+  if (!ok) failures += 1
+  process.stdout.write(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail === '' ? '' : ` — ${detail}`}\n`)
+}
+
 for (const file of scripts) {
   try {
     execFileSync(process.execPath, ['--check', file], { stdio: ['ignore', 'ignore', 'pipe'] })
@@ -84,6 +90,31 @@ for (const [name, expectedId] of [
   const guarded = text.includes('function registerSafely(') && !/ctx\.slots\.register\(\{ name: "[^"]*\.directoryFlow"/.test(text)
   if (!guarded) failures += 1
   process.stdout.write(`${guarded ? 'PASS' : 'FAIL'}  ${name} registers through the guarded helper, so one refusal cannot unload the plugin\n`)
+
+  // Every displayed string is a locale key, and every key exists in every
+  // dictionary. A missing key renders as the key itself in that language, which
+  // is a silent regression no test would otherwise catch.
+  const usedKeys = new Set([...text.matchAll(/T\("([^"]+)"/g)].map((match) => match[1]))
+  const blocks = [...text.matchAll(/\n\t\t\t(en|fr|zh): \{([\s\S]*?)\n\t\t\t\}/g)]
+  check(`${name} declares the fr, en, and zh dictionaries`, blocks.length === 3, blocks.map((block) => block[1]).join(','))
+  for (const [, locale, body] of blocks) {
+    const defined = new Set([...body.matchAll(/"([^"]+)":/g)].map((match) => match[1]))
+    const missing = [...usedKeys].filter((key) => !defined.has(key))
+    const unused = [...defined].filter((key) => !usedKeys.has(key))
+    const ok = missing.length === 0 && unused.length === 0
+    if (!ok) failures += 1
+    process.stdout.write(`${ok ? 'PASS' : 'FAIL'}  ${name} ${locale}: ${defined.size} keys, ${missing.length} missing${missing.length > 0 ? ` (${missing.join(',')})` : ''}, ${unused.length} unused${unused.length > 0 ? ` (${unused.join(',')})` : ''}\n`)
+
+    // A value must be the display text, never a call. A bulk rename that reaches
+    // into the dictionary turns a translation into `T("its own key")`, which
+    // renders the key in that language and passes every key-count check.
+    const selfReferential = [...body.matchAll(/"([^"]+)":\s*(T\([^\n]*)/g)].map((match) => match[1])
+    check(`${name} ${locale} values are text, not calls`, selfReferential.length === 0, selfReferential.join(','))
+  }
+
+  // A locale key reaching the DOM as a literal would mean hardcoded copy.
+  const hardcoded = [...text.matchAll(/>\s*"([A-ZÀ-ÿ][^"]{3,})"/g)].map((match) => match[1])
+  check(`${name} shows no hardcoded display copy`, hardcoded.length === 0, hardcoded.join(' | '))
 }
 
 process.stdout.write(failures === 0 ? '\nRESULT: ALL PASS\n' : `\nRESULT: ${failures} FAILURE(S)\n`)

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-remote-ssh — guide d'utilisation</title>
+<meta name="description" content="Connectez un serveur en SSH, choisissez-y un dossier et travaillez dedans : l'agent lit, écrit, modifie, liste, cherche et exécute des commandes sur la machine distante avec tous ses outils.">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site">
+  <div class="inner">
+    <a class="brand" href="../" style="color:inherit">dsh<span>-</span>remote<span>-</span>ssh</a>
+    <nav class="langs">
+      <a href="../fr/" aria-current="page" onclick="remember('fr')">Français</a>
+      <a href="../en/" onclick="remember('en')">English</a>
+      <a href="../zh/" onclick="remember('zh')">中文</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>Travaillez sur un serveur distant comme s'il était local</h1>
+    <p class="lead">Connectez un hôte en SSH, choisissez-y un dossier, et travaillez dedans. L'agent
+      lit, écrit, modifie, liste, cherche et exécute des commandes sur la machine distante avec tous
+      les outils qu'il a déjà. La connexion est partagée par toutes les sessions, plusieurs serveurs
+      peuvent être connectés en même temps, et tout s'active depuis
+      <strong>Paramètres → Plugins</strong>.</p>
+    <div class="actions">
+      <a class="button primary" href="#install">Installer</a>
+      <a class="button" href="https://github.com/cmukanisa/dsh-remote-ssh/releases">Versions</a>
+      <a class="button" href="https://github.com/cmukanisa/dsh-remote-ssh">Code source</a>
+    </div>
+  </div>
+
+  <section>
+    <h2>Ce que ça fait</h2>
+    <ul>
+      <li><strong>Un dossier distant devient un workspace.</strong> Il apparaît dans la barre
+        latérale comme n'importe quel autre, et une session ouverte dedans travaille sur le serveur.</li>
+      <li><strong>Tous les outils, pas un sous-ensemble.</strong> Lecture et écriture de fichiers,
+        éditions littérales, listings, <code>glob</code>/<code>grep</code> et le shell s'exécutent
+        sur la machine distante.</li>
+      <li><strong>Plusieurs hôtes à la fois.</strong> Les profils sont durables et partagés par
+        toutes les sessions : un serveur connecté une fois est disponible partout.</li>
+      <li><strong>OpenSSH, ou Tailscale SSH.</strong> Vos clés, votre agent et votre
+        <code>~/.ssh/config</code> font autorité ; un tailnet peut ajouter un accès par identité.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Prérequis</h2>
+    <ul>
+      <li><strong>dsh</strong> installé — <code>npm install -g @deepseek-ai/dsh</code>, n'importe quel profil.</li>
+      <li><strong>Node 22.19+ ou 24+</strong> — la plage exigée par le harness lui-même.</li>
+      <li>Un <strong>client OpenSSH</strong> sur la machine qui exécute dsh (<code>ssh -V</code>).
+        Le client OpenSSH de Windows fonctionne, sans multiplexage de connexion.</li>
+      <li>Un <strong>serveur SSH POSIX</strong> (Linux, macOS, BSD). Un serveur Windows OpenSSH est
+        refusé avec un message explicite.</li>
+      <li>Authentification par clé recommandée. <code>sshpass</code> n'est nécessaire que pour un mot de passe.</li>
+      <li>Optionnel : <code>ripgrep</code> sur le serveur, pour <code>glob</code> et <code>grep</code>.</li>
+    </ul>
+  </section>
+
+  <section id="install">
+    <h2>Installer</h2>
+    <pre><code>curl -fsSL https://raw.githubusercontent.com/cmukanisa/dsh-remote-ssh/main/install.sh | sh</code></pre>
+    <p class="note">Ou depuis un clone : <code>git clone https://github.com/cmukanisa/dsh-remote-ssh &amp;&amp; cd dsh-remote-ssh &amp;&amp; node install.mjs</code></p>
+
+    <div class="card">
+      <h3>Installer active le plugin, et l'installation est transactionnelle</h3>
+      <p class="note">Elle vérifie d'abord tous les prérequis, installe, vérifie, et revient à l'état
+        précédent exact si quoi que ce soit ne passe pas — un plugin à moitié installé laisserait un
+        harness démarrer une composition qui désactive les providers livrés sans enregistrer les
+        remplaçants.</p>
+      <pre><code>  checking
+  ✓ node        ·························· v24.14.0 (the harness requires &gt;= 22.19)
+  ✓ ssh         ···································· OpenSSH_10.3p1, LibreSSL 3.3.6
+  ✓ tailscale   ················ 1.102.3 — the Tailscale SSH transport is available
+  ✓ harness     ················································· /Users/you/.dsh
+  ✓ writable    ··································· profiles/plugins accepts writes
+  ✓ modules     ················· profiles/node_modules/@deepseek-ai/cordis present
+
+  installing
+  ✓ copied      ········ dsh-remote-ssh → profiles/plugins/dsh-remote-ssh (8 files)
+  ✓ patched     ···································· cordis.patch.yml (8 rows)
+  ✓ enabled     ····························· settings.yaml remote-ssh.enabled = true
+
+  verifying
+  ✓ files       ······················································ 12 files in place
+  ✓ composition ·············································· 8 expected rows
+  ✓ setting     ····································· remote-ssh.enabled = true
+  ✓ module      ············· registry.js imports and exports RemoteRegistry
+
+  ──────────────────────────────────────────────────────────────────────────────
+  Done in 0.1s. Reload the harness page, then workspace "+" → "Serveur distant (SSH)".</code></pre>
+    </div>
+
+    <table>
+      <tr><th>Option</th><th>Effet</th></tr>
+      <tr><td><code>--keep-off</code></td><td>installer en veille — pour un déploiement où l'activation est auditée séparément</td></tr>
+      <tr><td><code>--enable</code></td><td>activer même si un passage précédent l'avait laissé désactivé</td></tr>
+      <tr><td><code>--link</code></td><td>lier les paquets au lieu de les copier (développement)</td></tr>
+      <tr><td><code>--dry-run</code></td><td>lancer les vérifications, annoncer les changements, ne rien écrire</td></tr>
+      <tr><td><code>--no-color</code></td><td>sortie sans couleur (respecte aussi <code>NO_COLOR</code>)</td></tr>
+      <tr><td><code>--uninstall</code></td><td>retirer les paquets, les lignes de composition et le réglage</td></tr>
+      <tr><td><code>--dsh-home DIR</code></td><td>cibler un autre dossier de harness</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Utiliser</h2>
+    <ol>
+      <li>Rechargez la page du harness.</li>
+      <li>Cliquez sur <strong>+</strong> dans l'en-tête des workspaces de la barre latérale — ou sur
+        le bouton 🖥 en bas de la barre latérale, qui ouvre la même boîte de dialogue.</li>
+      <li>Choisissez <strong>Serveur distant (SSH)</strong>.</li>
+      <li>Cliquez sur <strong>＋ Serveur</strong> et remplissez la connexion : nom, hôte, port,
+        utilisateur, chemin de clé privée, ou un mot de passe.</li>
+      <li>Naviguez jusqu'au dossier, puis <strong>Utiliser ce dossier</strong>.</li>
+    </ol>
+    <p>Le dossier apparaît comme un workspace normal. Les sessions qui y sont ouvertes atteignent le
+      serveur, et le profil reste disponible pour toutes les autres sessions.</p>
+    <p class="note">L'interface suit la langue de votre navigateur : français, anglais ou chinois.</p>
+  </section>
+
+  <section>
+    <h2>Tailscale</h2>
+    <p>Deux choses différentes s'appellent « se connecter via Tailscale », et le plugin ne les
+      confond pas.</p>
+    <ul>
+      <li><strong>OpenSSH sur le tailnet — rien à configurer.</strong> Pointez un profil vers un nom
+        MagicDNS ou une adresse <code>100.x</code> : le vrai <code>ssh</code> passe par WireGuard,
+        avec vos clés et votre <code>known_hosts</code> comme autorité.</li>
+      <li><strong><code>tailscale ssh</code> — au choix, par profil.</strong> Le client Tailscale
+        enveloppe le <code>ssh</code> du système : résolution MagicDNS, atteignabilité via
+        <code>tailscaled</code>, et clé d'hôte vérifiée auprès du serveur de coordination. L'accès
+        est alors régi par les ACL du tailnet plutôt que par des clés sur disque.</li>
+    </ul>
+    <p>Le formulaire de connexion liste les pairs de votre tailnet ; un clic remplit le nom MagicDNS,
+      l'utilisateur, et le transport quand le pair fait tourner le serveur SSH Tailscale. Un pair
+      signalé hors ligne est nommé <em>avant</em> la tentative, au lieu d'apparaître comme un
+      timeout.</p>
+  </section>
+
+  <section>
+    <h2>Mettre à jour</h2>
+    <p>Relancez l'installeur. Il réécrit son propre bloc de composition, ce qui suffit à prendre une
+      nouvelle version <strong>sans redémarrer le harness</strong> :</p>
+    <ul>
+      <li>la <strong>moitié navigateur</strong> est servie depuis des octets que
+        <code>dsh-client-hmr</code> surveille : remplacer le bundle installé change la révision
+        servie à la page ;</li>
+      <li>un changement de la <strong>moitié hôte</strong> (<code>lib/*.js</code>) est mis en cache
+        par le loader ESM de Node : celui-là exige un redémarrage du harness.</li>
+    </ul>
+    <pre><code>node install.mjs       # ou la commande curl à nouveau</code></pre>
+  </section>
+
+  <section>
+    <h2>Dépannage</h2>
+    <table>
+      <tr><th>Symptôme</th><th>Cause et correction</th></tr>
+      <tr><td><code>does not answer as a POSIX host</code></td><td>Un serveur SSH Windows. Utilisez un hôte Linux/macOS, ou exposez le sshd WSL de cette machine sur son propre port.</td></tr>
+      <tr><td><code>Permission denied (publickey)</code></td><td>Lancez <code>ssh &lt;hôte&gt;</code> à la main d'abord ; le plugin utilise le même client, le même agent et la même configuration.</td></tr>
+      <tr><td>Clé d'hôte changée</td><td>Le plugin refuse, à raison. Retirez la ligne obsolète de <code>known_hosts</code> quand vous êtes sûr.</td></tr>
+      <tr><td><code>glob</code>/<code>grep</code> signalent un programme absent</td><td>Installez ripgrep sur le serveur (<code>apt-get install ripgrep</code>, <code>dnf install ripgrep</code>, <code>apk add ripgrep</code>).</td></tr>
+      <tr><td>Un pair du tailnet expire</td><td>Tailscale le signale hors ligne ; le formulaire de connexion le dit à l'avance.</td></tr>
+      <tr><td>Le workspace semble vide dans un outil purement local</td><td>Cet outil contourne la couche filesystem et voit donc le miroir local vide. Utilisez l'arborescence de fichiers du workspace.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Limites à connaître</h2>
+    <ul>
+      <li><strong>Serveurs POSIX uniquement.</strong> La machine distante est pilotée avec du shell
+        POSIX ; un serveur Windows OpenSSH est refusé plutôt que de fonctionner à moitié.</li>
+      <li><strong>Les commandes distantes ne sont pas confinées.</strong> Le bac à sable est un
+        mécanisme du même noyau ; par SSH, les permissions du compte sont la frontière, et aucun
+        fait de sandbox n'est rapporté pour une exécution distante. La barrière <em>filesystem</em>,
+        elle, est appliquée.</li>
+      <li><strong><code>glob</code> et <code>grep</code> exigent ripgrep sur le serveur.</strong></li>
+      <li><strong>Pas de surveillance de fichiers à distance.</strong> L'arborescence se rafraîchit à
+        la navigation.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Liens</h2>
+    <ul>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh">Dépôt</a> — code, tickets</li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">Versions</a> — archive et empreinte</li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/blob/main/CONTRIBUTING.md">Contribuer</a></li>
+      <li><a href="https://github.com/cmukanisa/dsh-remote-ssh/blob/main/SECURITY.md">Politique de sécurité</a> — ce que garantit le canal SSH, et comment signaler</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="inner">
+    Réalisé par <a href="https://github.com/cmukanisa">Christian Kasse (@cmukanisa)</a> · MIT ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh">dépôt</a> ·
+    <a href="https://github.com/cmukanisa/dsh-remote-ssh/releases">versions</a>
+  </div>
+</footer>
+
+<script>
+function remember(lang) { try { localStorage.setItem("dsh-remote-ssh-docs-lang", lang); } catch (e) {} }
+</script>
+</body>
+</html>

@@ -74,9 +74,11 @@ export class RemoteSshController extends TypertRemoteService {
       root: this.registry.root,
       profiles: this.registry.list(),
       // Read-only and best effort: a machine without Tailscale reports
-      // unavailable, and the browser half then renders no tailnet section.
+      // unavailable, and the browser half then renders no tailnet section. This
+      // is re-read on every call, so the Settings card's Re-check button adopts a
+      // client the user installed after the plugin was.
       tailnet: await this.registry.tailnet(),
-      tailscaleConfigured: (process.env.DSH_TAILSCALE_BIN ?? 'tailscale'),
+      tailscaleBin: process.env.DSH_TAILSCALE_BIN ?? 'tailscale',
     }
   }
 

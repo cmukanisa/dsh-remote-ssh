@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+
+- **The interface is localized in English, French, and Chinese**, following the
+  browser's language. Every displayed string is a key in the three dictionaries the
+  plugin registers with `ctx.locale`; `scripts/check-syntax.mjs` fails if a key is
+  missing from a locale, unused in the bundle, or if a literal reaches the DOM.
+- **A documentation site in the same three languages** (`docs/`, published with
+  GitHub Pages, no build step): what the plugin does, requirements, installation,
+  use, Tailscale, updating, troubleshooting, and the known limits. A landing page
+  detects the browser language; every page cross-links to the other two.
+- **A documentation gate** (`npm run check:docs`): the three pages exist, declare
+  their language, cross-link, keep the install section, have no dead internal link,
+  and pull no third-party resource.
+
+### Changed
+
+- **The README leads with Install, then Requirements**, and the reasoning lives
+  further down: what a reader needs first is how to get it and what it needs.
+
 ## [0.2.1] — 2026-09-11
 
 ### Changed

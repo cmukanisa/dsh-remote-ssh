@@ -10,7 +10,7 @@
   },
   "scripts": {
     "deps": "node scripts/link-deps.mjs",
-    "check": "node scripts/check-syntax.mjs",
+    "check": "node scripts/check-syntax.mjs && node scripts/check-template.mjs && node scripts/check-docs.mjs",
     "test:unit": "node test/unit.test.mjs",
     "test:install": "node test/install.test.mjs",
     "test:template": "node scripts/check-template.mjs",
@@ -18,7 +18,8 @@
     "test:harness": "node test/harness.e2e.mjs",
     "test": "npm run check && npm run test:unit",
     "ssh:up": "node test/docker/up.mjs",
-    "ssh:down": "node test/docker/down.mjs"
+    "ssh:down": "node test/docker/down.mjs",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "keywords": [
     "dsh",
