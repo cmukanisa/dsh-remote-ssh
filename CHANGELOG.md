@@ -26,6 +26,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Preflight for offline peers.** A peer Tailscale reports as offline is named
   before the attempt, instead of surfacing as a connect timeout.
 
+### Security
+
+- **Polynomial backtracking in profile-id generation (CodeQL `js/polynomial-redos`, high).**
+  `slugify` stripped leading and trailing dashes with `/^-+|-+$/`, an alternation
+  of two quantified patterns. The run-collapsing replace immediately before it
+  guarantees at most one dash on each side, so the quantifiers bought nothing and
+  cost a backtracking hazard on a hostile profile label. It is now `/^-|-$/`.
+- **Check-then-use on the two documents the installer edits (CodeQL
+  `js/file-system-race`, high, four sites).** Reading and writing a path after
+  `existsSync` is a race against any concurrent edit. The installer now reads
+  through `readIfPresent`, which catches `ENOENT` instead of probing first.
+- **A predictable temporary directory in the Docker helper (CodeQL
+  `js/insecure-temporary-file`, high).** `test/docker/up.mjs` wrote into a fixed
+  path under the temp root, where a symlink planted by another local user would be
+  followed. It uses `mkdtempSync` now. The Tailscale suite also refuses to be the
+  place a real MagicDNS suffix or tailnet name gets committed.
+
 ### Fixed
 
 - **A failed probe no longer blames the wrong thing.** Every probe failure used to

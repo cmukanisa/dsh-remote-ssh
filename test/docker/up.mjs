@@ -9,7 +9,7 @@
  * Usage: node test/docker/up.mjs [--port 2223] [--name dsh-ssh-test] [--keep-key]
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,7 +22,11 @@ const option = (name, fallback) => {
 }
 const port = Number(option('port', '2223'))
 const name = option('name', 'dsh-ssh-test')
-const state = option('state', join(tmpdir(), 'dsh-remote-ssh-e2e'))
+// A random directory, not a predictable name under the temp root: writing a file
+// at a fixed path there is the insecure-temporary-file pattern (a symlink planted
+// by another local user would be followed). `--state` stays overridable so a
+// caller can reuse a key across runs.
+const state = option('state', mkdtempSync(join(tmpdir(), 'dsh-remote-ssh-e2e-')))
 mkdirSync(state, { recursive: true })
 
 const privateKey = join(state, 'id_test')

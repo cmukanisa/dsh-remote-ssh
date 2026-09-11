@@ -21,29 +21,12 @@
  *
  * @module dsh-remote-ssh/registry
  */
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, chmodSync } from 'node:fs'
 import { dirname, join, resolve as joinPath, sep } from 'node:path'
 import { SshTransport, SshTransportError, shellQuote } from './ssh.js'
 import { TRANSPORTS, isTailnetAddress, peerFor, tailnetPreflight, tailnetStatus } from './tailscale.js'
-
-/** Filesystem shape of one persisted connection profile. */
-const PROFILE_SCHEMA = {
-  id: z.string().required(),
-  label: z.string().required(),
-  host: z.string().required(),
-  port: z.natural().default(22),
-  user: z.string().default(''),
-  identityFile: z.string().default(''),
-  password: z.string().default(''),
-  strictHostKeyChecking: z.union([z.const('accept-new'), z.const('yes'), z.const('no')]).default('accept-new'),
-  remoteRoot: z.string().default(''),
-  /** `openssh` (default) or `tailscale` for the Tailscale SSH wrapper. */
-  transport: z.union([z.const('openssh'), z.const('tailscale')]).default('openssh'),
-  extraOptions: z.array(z.string()).default([]),
-  createdAt: z.string().required(),
-}
 
 /** Validated configuration of the registry row. */
 export const Config = z.object({
@@ -104,7 +87,11 @@ function remoteJoin(base, name) {
 
 /** A filesystem-safe id derived from a profile label or host. */
 function slugify(value, fallback) {
-  const slug = String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  // Two anchored single-character strips, not `^-+|-+$`: the run-collapsing
+  // replace above guarantees at most one leading and one trailing dash, and an
+  // alternation of two quantified patterns is a polynomial backtracking hazard on
+  // a long input (CodeQL js/polynomial-redos).
+  const slug = String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   return slug === '' ? fallback : slug.slice(0, 32)
 }
 
@@ -255,6 +242,8 @@ export class RemoteRegistry extends Service {
     for (let index = 2; this.profiles.some((entry) => entry.id === id); index += 1) id = `${base}-${index}`
     const transport = input.transport ?? 'openssh'
     if (!TRANSPORTS.includes(transport)) throw new RemoteProfileError(`unknown transport "${transport}"; expected one of ${TRANSPORTS.join(', ')}`, 'invalid-profile')
+    // The durable shape: `path`-free (a profile names a host, not a folder), and
+    // every field a string or a number so the document stays hand-editable.
     const profile = {
       id,
       label,

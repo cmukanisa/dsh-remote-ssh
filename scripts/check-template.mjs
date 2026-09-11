@@ -15,7 +15,6 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 
-const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const AT = fileURLToPath(new URL('../patch/remote-ssh.patch.yml.tpl', import.meta.url))
 
 /** Rows the template must insert. */
