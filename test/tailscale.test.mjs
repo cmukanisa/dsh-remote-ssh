@@ -83,7 +83,14 @@ check('the Tailscale transport runs the Tailscale client', tsArgv[0] === 'tailsc
 check('the Tailscale client is told to ssh, after the separator', tsArgv[1] === 'ssh' && tsArgv[2] === '--', tsArgv.slice(0, 3).join(' '))
 check('ssh options follow the separator, where the wrapper forwards them', tsArgv.slice(3).some((value) => value === '-T'))
 check('the destination and command stay last', tsArgv[tsArgv.length - 2] === 'deploy@build-a.example-tailnet.ts.net' && tsArgv[tsArgv.length - 1] === 'echo hi')
-check('multiplexing is kept in Tailscale mode', tsArgv.some((value) => value === 'ControlMaster=auto') && tsArgv.some((value) => value.startsWith('ControlPath=')))
+// Windows OpenSSH has no connection multiplexing at all, so the transport omits
+// it there whatever the transport mode is; everywhere else Tailscale mode keeps
+// it, because the wrapper execs the system ssh with these options after `--`.
+if (process.platform === 'win32') {
+  check('a Windows client omits multiplexing in Tailscale mode too', !tsArgv.some((value) => value.startsWith('ControlPath=')), tsArgv.join(' '))
+} else {
+  check('multiplexing is kept in Tailscale mode', tsArgv.some((value) => value === 'ControlMaster=auto') && tsArgv.some((value) => value.startsWith('ControlPath=')))
+}
 check('host-key checking is never disabled by the Tailscale mode', !tsArgv.some((value) => value === 'StrictHostKeyChecking=no'))
 
 const withPassword = new SshTransport({ ...base, transport: 'tailscale', password: 'not-a-real-secret' }, { controlDir: '/tmp/dsh-ts-pass' })
