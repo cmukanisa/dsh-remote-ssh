@@ -66,12 +66,21 @@ export function isTailnetAddress(value) {
  */
 export async function tailnetStatus(options = {}) {
   const bin = options.bin ?? tailscaleBin()
+  let version
+  try {
+    // Best effort and cheap: the version is what tells a user that the client
+    // they just installed is finally the one the plugin sees.
+    const probe = await run(bin, ['version'], { timeout: options.timeoutMs ?? 10000 })
+    version = `${probe.stdout ?? ''}${probe.stderr ?? ''}`.trim().split('\n')[0].split(' ')[0] || undefined
+  } catch {
+    version = undefined
+  }
   try {
     const { stdout } = await run(bin, ['status', '--json'], { timeout: options.timeoutMs ?? 10000, maxBuffer: 8 * 1024 * 1024 })
-    return { available: true, ...parseTailnetStatus(stdout) }
+    return { available: true, version, ...parseTailnetStatus(stdout) }
   } catch (error) {
-    if (error?.code === 'ENOENT') return { available: false, reason: 'not-installed', error: 'the `tailscale` command was not found on PATH' }
-    return { available: false, reason: 'unavailable', error: `\`${bin} status --json\` failed: ${error?.stderr?.trim() || error?.message || String(error)}` }
+    if (error?.code === 'ENOENT') return { available: false, version: undefined, reason: 'not-installed', error: 'the `tailscale` command was not found on PATH' }
+    return { available: false, version, reason: 'unavailable', error: `\`${bin} status --json\` failed: ${error?.stderr?.trim() || error?.message || String(error)}` }
   }
 }
 

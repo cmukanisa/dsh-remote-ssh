@@ -36,6 +36,13 @@ window.__ModuleLoader__.load({
 		 */
 		const dictionaries = {
 			en: {
+				"settings.tailscale": "Tailscale",
+				"settings.tailscaleMissing": "not installed — install it, then press Re-check",
+				"settings.tailscaleAvailable": "available",
+				"action.recheck": "Re-check",
+				"state.checking": "Checking…",
+				"settings.tailscaleHint": "Tailscale was not found on PATH. Install it and press Re-check; the plugin adopts it without reinstalling.",
+				"settings.tailscaleNote": "A Tailscale client installed later is picked up here.",
 				"dialog.title": "Add a workspace",
 				"tab.local": "This computer",
 				"tab.remote": "Remote server (SSH)",
@@ -88,6 +95,13 @@ window.__ModuleLoader__.load({
 				"settings.empty": "No server connected yet."
 			},
 			fr: {
+				"settings.tailscale": "Tailscale",
+				"settings.tailscaleMissing": "non installé — installez-le puis cliquez sur Revérifier",
+				"settings.tailscaleAvailable": "disponible",
+				"action.recheck": "Revérifier",
+				"state.checking": "Vérification…",
+				"settings.tailscaleHint": "Tailscale est introuvable dans le PATH. Installez-le puis cliquez sur Revérifier ; le plugin l'adopte sans réinstallation.",
+				"settings.tailscaleNote": "Un client Tailscale installé plus tard est détecté ici.",
 				"dialog.title": "Ajouter un workspace",
 				"tab.local": "Cet ordinateur",
 				"tab.remote": "Serveur distant (SSH)",
@@ -140,6 +154,13 @@ window.__ModuleLoader__.load({
 				"settings.empty": "Aucun serveur connecté pour l'instant."
 			},
 			zh: {
+				"settings.tailscale": "Tailscale",
+				"settings.tailscaleMissing": "未安装 — 安装后点击“重新检测”",
+				"settings.tailscaleAvailable": "可用",
+				"action.recheck": "重新检测",
+				"state.checking": "检测中…",
+				"settings.tailscaleHint": "PATH 中未找到 Tailscale。安装后点击“重新检测”，插件无需重装即可使用。",
+				"settings.tailscaleNote": "之后安装的 Tailscale 客户端会在这里被检测到。",
 				"dialog.title": "添加工作区",
 				"tab.local": "本机",
 				"tab.remote": "远程服务器（SSH）",
@@ -698,10 +719,20 @@ window.__ModuleLoader__.load({
 			const [status, setStatus] = react.useState(undefined);
 			const [error, setError] = react.useState(undefined);
 			const [busy, setBusy] = react.useState(false);
+			const [checking, setChecking] = react.useState(false);
 			const refresh = react.useCallback(() => {
 				callHost(ctx, "status", {}).then(setStatus).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
 			}, [ctx]);
 			react.useEffect(() => { refresh(); }, [refresh]);
+			// Tailscale is optional, and it may be installed long after the plugin
+			// was. This re-reads the host environment on demand, so adopting it
+			// never means reinstalling the plugin or restarting the harness.
+			const recheck = () => {
+				setChecking(true);
+				setError(undefined);
+				callHost(ctx, "status", {}).then((value) => { setStatus(value); setChecking(false); })
+					.catch((reason) => { setChecking(false); setError(reason instanceof Error ? reason.message : String(reason)); });
+			};
 			const toggle = () => {
 				setBusy(true);
 				callHost(ctx, "setEnabled", { enabled: status?.enabled !== true }).then((value) => { setStatus(value); setBusy(false); })
@@ -719,6 +750,19 @@ window.__ModuleLoader__.load({
 					h("button", { style: styles.button(status?.enabled === true, busy), onClick: toggle, disabled: busy },
 						status?.enabled === true ? T("settings.enabled") : T("settings.disabled"))
 				),
+				h("div", { style: { ...styles.row, marginTop: 12, paddingTop: 10, borderTop: `0.5px solid ${C.border}` } },
+					h("span", { style: { ...styles.note, flex: 1 } },
+						T("settings.tailscale"),
+						": ",
+						status?.tailnet?.available === true
+							? h("span", { style: styles.status(true) }, "● ", T("settings.tailscaleAvailable"), status.tailnet.version === undefined ? "" : ` ${status.tailnet.version}`)
+							: h("span", { style: styles.status(false) }, "○ ", T("settings.tailscaleMissing"))
+					),
+					h("button", { style: styles.button(false, checking), onClick: recheck, disabled: checking },
+						checking ? T("state.checking") : T("action.recheck"))
+				),
+				h("div", { style: { ...styles.note, marginTop: 4 } },
+					status?.tailnet?.available === true ? T("settings.tailscaleNote") : T("settings.tailscaleHint")),
 				status?.profiles?.length > 0 ? h("ul", { style: { margin: "12px 0 0", padding: 0 } },
 					status.profiles.map((profile) => h("li", {
 						key: profile.id,
