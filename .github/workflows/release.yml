@@ -67,8 +67,9 @@ jobs:
           # The YAML shape, not the report text: settings.yaml is a document.
           grep -q '^  enabled: true$' "$DSH_HOME/settings.yaml"
           # The verification phase really imported the host module; that row is
-          # printed only when the import succeeded.
-          grep -q 'registry.js imports and exports RemoteRegistry' "$RUNNER_TEMP/install.log"
+          # printed only when the import succeeded. Match the stable part of the
+          # sentence, not its punctuation: the report pads rows with dots.
+          grep -q 'registry.js exports RemoteRegistry' "$RUNNER_TEMP/install.log"
           node "$RUNNER_TEMP/install.mjs" --dsh-home "$DSH_HOME" > /dev/null 2>&1
           test "$(grep -c '# >>> dsh-remote-ssh' "$DSH_HOME/cordis.patch.yml")" = "1"
           # The same tarball must also install dormant on request, which is the
