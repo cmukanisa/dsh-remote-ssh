@@ -203,6 +203,94 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		/**
+		 * The local directory browser.
+		 *
+		 * Occupying the workspace hole means owning the whole flow, so the local
+		 * half is this plugin's responsibility too. It talks to whichever
+		 * directory-picking backend the deployment composed: `list` and
+		 * `createDirectory` come from the in-app browser, `pick` from the OS
+		 * chooser, and a deployment offers one or the other.
+		 */
+		function LocalBrowser(props) {
+			const ctx = props.ctx;
+			const [state, setState] = react.useState({ loading: false, error: undefined, path: undefined, entries: [], home: undefined, browsable: true });
+			const abort = react.useRef(undefined);
+
+			const load = react.useCallback((path) => {
+				abort.current?.abort();
+				const controller = new AbortController();
+				abort.current = controller;
+				setState((previous) => ({ ...previous, loading: true, error: undefined }));
+				ctx.remote.directoryPicker.list(path, controller.signal).then((listing) => {
+					setState({ loading: false, error: undefined, path: listing.path, entries: listing.entries, home: listing.home, browsable: true });
+					props.onPathChange(listing.path);
+				}).catch((reason) => {
+					if (controller.signal.aborted) return;
+					// No in-app browser in this deployment: the OS chooser is the only
+					// local affordance, and saying so beats an empty list.
+					setState({ loading: false, error: undefined, path: undefined, entries: [], home: undefined, browsable: false });
+					void reason;
+				});
+			}, [ctx]);
+
+			react.useEffect(() => { load(undefined); return () => abort.current?.abort(); }, [load]);
+
+			const parentOf = (path) => {
+				if (path === undefined || path === "/") return undefined;
+				const cut = path.slice(0, path.lastIndexOf("/"));
+				return cut === "" ? "/" : cut;
+			};
+			const createFolder = () => {
+				const name = props.newFolder;
+				props.onNewFolder(undefined);
+				if (name === undefined || name.trim() === "") return;
+				ctx.remote.directoryPicker.createDirectory(state.path, name).then(() => load(state.path))
+					.catch((reason) => setState((previous) => ({ ...previous, error: reason instanceof Error ? reason.message : String(reason) })));
+			};
+
+			if (state.browsable !== true) {
+				return h("div", null,
+					h("div", { style: styles.note }, "Ce déploiement utilise le sélecteur de dossiers du système."),
+					h("div", { style: { marginTop: 12 } }, h("button", { style: styles.button(true, props.busy), onClick: props.onPickSystem, disabled: props.busy }, "Choisir un dossier…"))
+				);
+			}
+
+			const rows = [];
+			if (state.path !== undefined && state.path !== "/") {
+				rows.push(h("button", { key: "..", style: styles.item(true), onClick: () => load(parentOf(state.path)) }, h("span", { style: styles.icon }, "↰"), h("span", null, "..")));
+			}
+			for (const entry of state.entries) {
+				const isDir = entry.type === "directory";
+				rows.push(h("button", {
+					key: entry.path,
+					style: styles.item(isDir),
+					disabled: !isDir,
+					onClick: () => (isDir ? load(entry.path) : undefined)
+				}, h("span", { style: styles.icon }, isDir ? "📁" : "📄"), h("span", { style: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, entry.name)));
+			}
+
+			return h("div", null,
+				h("div", { style: styles.crumbs },
+					state.path === undefined ? null : h("button", { style: styles.crumb, onClick: () => load(undefined) }, state.home ?? "/"),
+					state.loading ? h("span", { style: { marginLeft: 8 } }, "…") : null
+				),
+				h("div", { style: { ...styles.row, marginTop: 8 } },
+					h("button", { style: styles.button(false, false), onClick: () => props.onNewFolder("") }, "＋ Nouveau dossier"),
+					props.newFolder === undefined ? null : h("span", { style: { ...styles.row, flex: "1 1 220px" } },
+						h("input", {
+							autoFocus: true, style: { ...styles.input, flex: 1 }, value: props.newFolder, placeholder: "nom-du-dossier",
+							onChange: (event) => props.onNewFolder(event.target.value),
+							onKeyDown: (event) => { if (event.key === "Enter") createFolder(); if (event.key === "Escape") props.onNewFolder(undefined); }
+						}),
+						h("button", { style: styles.button(true, false), onClick: createFolder }, "Créer")
+					)
+				),
+				h("div", { style: styles.list }, rows.length === 0 ? h("div", { style: { ...styles.note, padding: 12 } }, state.loading ? "Chargement…" : "(dossier vide)") : rows),
+				state.error === undefined ? null : h("div", { style: styles.error }, state.error)
+			);
+		}
+
 		/** The remote directory browser: profile chips, breadcrumbs, entries. */
 		function RemoteBrowser(props) {
 			const ctx = props.ctx;
@@ -304,6 +392,7 @@ window.__ModuleLoader__.load({
 			const [profileId, setProfileId] = react.useState(undefined);
 			const [adding, setAdding] = react.useState(false);
 			const [path, setPath] = react.useState(undefined);
+			const [newFolder, setNewFolder] = react.useState(undefined);
 			const [error, setError] = react.useState(undefined);
 			const [busy, setBusy] = react.useState(false);
 
@@ -348,8 +437,19 @@ window.__ModuleLoader__.load({
 
 			const body = tab === "local"
 				? h("div", null,
-					h("div", { style: styles.note }, "Ouvre le sélecteur de dossiers de votre machine. Le dossier choisi devient un workspace local."),
-					h("div", { style: { marginTop: 12 } }, h("button", { style: styles.button(true, busy), onClick: pickLocal, disabled: busy }, "Choisir un dossier local…"))
+					h("div", { style: styles.row },
+						h("button", { style: styles.button(false, busy), onClick: pickLocal, disabled: busy }, "Sélecteur du système…"),
+						h("span", { style: { ...styles.note, flex: "1 1 220px" } }, "ou choisissez dans l'arborescence ci-dessous")
+					),
+					error === undefined ? null : h("div", { style: { ...styles.error, marginTop: 8 } }, error),
+					h("div", { style: { marginTop: 10 } }, h(LocalBrowser, {
+						ctx,
+						busy,
+						newFolder,
+						onNewFolder: setNewFolder,
+						onPathChange: setPath,
+						onPickSystem: pickLocal
+					}))
 				)
 				: status?.enabled === false
 					? h("div", { style: styles.note }, "Le module SSH distant est désactivé. Activez-le dans Paramètres → Plugins → « remote-ssh ».")
@@ -377,10 +477,12 @@ window.__ModuleLoader__.load({
 					h("div", { style: styles.body }, body, error === undefined ? null : h("div", { style: styles.error }, error)),
 					h("div", { style: styles.foot },
 						h("span", { style: { flex: 1, ...styles.note } },
-							tab === "remote" && path !== undefined ? `Dossier distant : ${path}` : ""),
+							path === undefined ? "" : tab === "remote" ? `Dossier distant : ${path}` : `Dossier local : ${path}`),
 						tab === "remote" && profiles.length > 0 && !adding && status?.enabled !== false
 							? h("button", { style: styles.button(true, busy || path === undefined), disabled: busy || path === undefined, onClick: adopt }, busy ? "Ajout…" : "Utiliser ce dossier")
-							: null,
+							: tab === "local" && path !== undefined
+								? h("button", { style: styles.button(true, busy), disabled: busy, onClick: () => props.onPicked(path) }, "Utiliser ce dossier")
+								: null,
 						h("button", { style: styles.button(false, false), onClick: close }, "Fermer")
 					)
 				)
@@ -460,17 +562,47 @@ window.__ModuleLoader__.load({
 		}
 
 		/** Cordis plugin body: register the occupant, the launcher, and the card. */
+		/**
+		 * Priority for the two workspace-hole occupants.
+		 *
+		 * A `single` slot refuses two registrations at the SAME priority — it throws
+		 * rather than shadowing — and the LOWEST priority renders. The shipped
+		 * directory picker registers at the default 0, so the plugin's chooser asks
+		 * for -1 and wins, which is what makes "local machine or SSH" one dialog.
+		 * Without it the plugin failed to load entirely, and the whole UI went with
+		 * it.
+		 */
+		const DIRECTORY_FLOW_PRIORITY = -1;
+
+		/**
+		 * Register without letting one refused slot take the plugin down.
+		 *
+		 * The launcher and the Settings card are the fallbacks: if a hole is
+		 * occupied at a priority this plugin did not expect, the remote feature
+		 * stays reachable from the sidebar instead of disappearing behind a
+		 * "Failed to load plugins" page.
+		 */
+		function registerSafely(ctx, options, Component) {
+			try {
+				return ctx.slots.register(options, Component);
+			} catch (error) {
+				console.warn(`[dsh-remote-ssh] ${options.name} was not registered: ${error instanceof Error ? error.message : String(error)}`);
+				return undefined;
+			}
+		}
+
+		/** Cordis plugin body: the chooser, the launcher, and the Settings card. */
 		function apply(ctx) {
 			ctx.slots.inject("conversation.hero.workspace.directoryFlow", () => ctx.slots.inject("sidebar.workspaces.directoryFlow", function* () {
 				const injected = () => ({ ctx });
-				yield ctx.slots.register({ name: "conversation.hero.workspace.directoryFlow", inject: injected }, RemoteDirectoryFlow);
-				yield ctx.slots.register({ name: "sidebar.workspaces.directoryFlow", inject: injected }, RemoteDirectoryFlow);
+				yield registerSafely(ctx, { name: "conversation.hero.workspace.directoryFlow", priority: DIRECTORY_FLOW_PRIORITY, inject: injected }, RemoteDirectoryFlow);
+				yield registerSafely(ctx, { name: "sidebar.workspaces.directoryFlow", priority: DIRECTORY_FLOW_PRIORITY, inject: injected }, RemoteDirectoryFlow);
 			}));
-			ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
+			ctx.slots.inject("sidebar.footer.action", () => registerSafely(ctx, {
 				name: "sidebar.footer.action",
 				inject: () => ({ ctx })
 			}, RemoteLauncher));
-			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
+			ctx.slots.inject("settings.plugin.item", () => registerSafely(ctx, {
 				name: "settings.plugin.item",
 				key: SETTINGS_NS,
 				inject: () => ({ ctx })
@@ -478,7 +610,7 @@ window.__ModuleLoader__.load({
 		}
 
 		exports.apply = apply;
-		exports.inject = ["slots", "connection", "uiWorkspace"];
+		exports.inject = ["slots", "connection", "uiWorkspace", "remote.directoryPicker"];
 		return module.exports;
 	}
 });

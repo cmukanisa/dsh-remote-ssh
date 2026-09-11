@@ -50,6 +50,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reads the stored value and reports it.
 - **`--help` printed the harness line**, which belongs to a real run.
 
+### Fixed (0.2.1, continued)
+
+- **The plugin failed to load, blanking the whole UI.** A `single` slot refuses a
+  second registration at the *same* priority instead of shadowing it, and the
+  refusal propagates out of `apply()` — so the browser showed
+  *"Failed to load plugins"* and none of this plugin's surface, or any other
+  plugin's, appeared. The shipped directory picker registers into the workspace
+  holes at the default priority 0; the chooser now asks for -1, which is what the
+  slot system's own message asks for ("register at a different priority to shadow
+  it, lowest renders").
+- **One contested slot can no longer unload the plugin.** Every registration goes
+  through a guarded helper, so a hole occupied at an unexpected priority leaves the
+  sidebar launcher and the Settings card working instead of taking the rest of the
+  plugin down with it.
+- **The local half of the workspace flow is now the plugin's own.** Occupying the
+  hole means owning the whole dialog, so there is an in-app local browser built on
+  `directoryPicker.list`/`createDirectory`, beside a "Système…" button for the OS
+  chooser. A deployment that composes only one of the two backends still gets a
+  working local flow.
+
+### Verified
+
+- **The browser half hot-reloads without restarting or refreshing.** Replacing the
+  installed `client.js` changes the revision `dsh-client-modules` serves — asserted
+  against a running harness, not assumed — because `dsh-client-hmr` polls the
+  bundle artifacts. A page reload is still needed for the *page*, but the plugin
+  does not need a process restart. (The host half is ESM-cached by Node, so a
+  change to `lib/*.js` other than the bundle still needs a restart.)
+
 ## [0.2.0] — 2026-09-11
 
 ### Added

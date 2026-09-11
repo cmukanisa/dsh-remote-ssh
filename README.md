@@ -20,6 +20,21 @@ connected at once, and the whole thing is switched on from **Settings → Plugin
 
 ---
 
+## Updating
+
+Re-run the installer. It rewrites its own composition block, which is enough to
+pick up a new version **without restarting the harness**:
+
+- the **browser half** is served from bytes that `dsh-client-hmr` polls, so
+  replacing the installed bundle changes the revision the page is served and the
+  plugin reloads;
+- a change to the **host half** (`lib/*.js`) is cached by Node's ESM loader, so
+  that one does need a harness restart.
+
+```sh
+node install.mjs       # or the curl one-liner again
+```
+
 ## Why it is built this way
 
 A workspace in dsh is a real local directory: session headers carry a canonical
