@@ -120,6 +120,20 @@ for (const [name, expectedId] of [
     check(`${name} ${locale} values are text, not calls`, selfReferential.length === 0, selfReferential.join(','))
   }
 
+  // Every `ctx.<service>` the bundle reads must be in `exports.inject`, base
+  // service included for dotted entries: cordis throws on an undeclared read,
+  // the React render crashes, and a `single` hole then abdicates to the next
+  // occupant until the page is reloaded — which is how the local tab silently
+  // turned into the OS chooser.
+  const injectList = text.match(/exports\.inject = \[([^\]]*)\]/)?.[1] ?? ''
+  const declared = new Set([...injectList.matchAll(/"([^"]+)"/g)].map((match) => match[1]))
+  const missingBase = [...declared].filter((entry) => entry.includes('.') && !declared.has(entry.split('.')[0]))
+  check(`${name} declares the base service of every dotted inject`, missingBase.length === 0, missingBase.join(','))
+  const known = new Set(['fiber', 'effect', 'on', 'emit', 'get', 'set', 'reflect', 'events', 'root', 'scope', 'plugin', 'inject'])
+  const read = new Set([...text.matchAll(/\bctx\.([a-zA-Z]+)\b/g)].map((match) => match[1]).filter((service) => !known.has(service)))
+  const undeclared = [...read].filter((service) => !declared.has(service))
+  check(`${name} declares every service it reads from ctx`, undeclared.length === 0, undeclared.join(','))
+
   // A locale key reaching the DOM as a literal would mean hardcoded copy.
   const hardcoded = [...text.matchAll(/>\s*"([A-ZÀ-ÿ][^"]{3,})"/g)].map((match) => match[1])
   check(`${name} shows no hardcoded display copy`, hardcoded.length === 0, hardcoded.join(' | '))

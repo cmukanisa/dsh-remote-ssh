@@ -56,6 +56,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `dsh web`. Covered by `test/install.test.mjs` with stand-in servers for each
   half of the fingerprint, a silent listener and an endless body; the README and
   the three documentation pages describe the cases, the flag, and the symptom.
+- **"This computer" made the remote choice disappear until the page was
+  reloaded.** The local tab read `ctx.remote.directoryPicker` without declaring
+  `remote` in `exports.inject`, so cordis threw inside the render; a `single`
+  slot then abdicates the crashed occupant and falls back to the shipped OS
+  chooser, which is why "+" in the sidebar and *Add workspace…* in a new chat
+  went straight to the system dialog with no remote option. Once past that, the
+  tab read `.entries` off the Remote namespace's `{ ok, value }` envelope and
+  crashed again. The local tab now goes through ui-workspace's own
+  `listDirectory`/`createDirectory`, and `scripts/check-syntax.mjs` fails on any
+  `ctx.<service>` read the bundle does not declare (base service included for
+  dotted entries).
+- **Tailscale SSH never connected: "No ED25519 host key is known … Host key
+  verification failed."** The transport ran `tailscale ssh -- <options>
+  user@host`; after `--` the wrapper hands everything to the system ssh
+  untouched, so the name was resolved through `~/.ssh/config` (on one machine,
+  an unrelated public IP) and the node's advertised host key was never used.
+  Proven against tailscale 1.102: only `tailscale ssh user@host <options>`
+  resolves through MagicDNS and checks the coordination-server host key. The
+  argv is now destination-first; `test/tailscale.test.mjs` asserts it and the
+  absence of `--`. Verified end to end from the dialog against a real node.
+  Two things the dialog now surfaces but cannot fix: a tailnet ACL that does
+  not permit the chosen user ("tailnet policy does not permit you to SSH as
+  user …"), and Tailscale's check mode, whose `login.tailscale.com/a/…` URL
+  arrives in the error text.
+- **The dialog reopened on the last tab used and carried the other tab's path**:
+  a remote folder showed up as the "local folder" to adopt. Every opening now
+  starts on *This computer* with no path; switching tabs clears the path.
+- **The remote folder list did not scroll** past the dialog's height, and there
+  was no one-click way back to the home folder: the list scrolls on its own,
+  and a ⌂ button precedes the breadcrumb.
+- **A Tailscale peer chip always wrote the MagicDNS name**: a *Fill the host
+  with* toggle chooses MagicDNS name or Tailscale IP, and re-applies to the
+  selected chip. The selected chip is shown filled with a ✓; typing another
+  host by hand unselects it. The presence dot is green when the peer is online.
+  The private-key field explains when to leave it empty.
+- **A Tailscale peer chip did not update the name once one was set**: picking a
+  second server kept the first one's name. A name the person typed is kept; one a
+  chip filled follows the next chip.
 - **`--link` on a fresh harness home failed with `ENOENT` on the symlink**: the
   copy path creates `profiles/plugins`, the link path did not. Found by the new
   `--link` test.

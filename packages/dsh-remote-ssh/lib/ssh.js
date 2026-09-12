@@ -284,18 +284,23 @@ export class SshTransport {
    * @returns the child's collected stdout, stderr, and exit status.
    */
   /**
-   * The wrapper argv that precedes the ssh options.
+   * The connector argv up to and including the destination, ssh options placed
+   * where each connector reads them.
    *
-   * `sshpass` answers an interactive prompt, so it must wrap whatever ends up
-   * talking to the terminal. The Tailscale client is a wrapper around the system
-   * `ssh` and only accepts its own flags before `--`; everything after the
-   * separator reaches ssh unchanged.
-   * @returns zero or more argv elements placed before the ssh options.
+   * OpenSSH wants `ssh <options> user@host`. The Tailscale client wants
+   * `tailscale ssh user@host <options>`: it reads the DESTINATION first, and
+   * only for that form resolves it through MagicDNS, opens the tailscaled
+   * pipe, and checks the node's advertised host key. With `ssh -- <options>
+   * user@host`, everything after `--` reached the system ssh untouched — the
+   * name was resolved by ~/.ssh/config (an unrelated public IP, on one
+   * machine) and the connection died on "No ED25519 host key is known".
+   * @param sshArgs - the ssh option vector.
+   * @returns argv from the binary through the destination.
    */
-  prefixArgv() {
-    // The Tailscale client is a wrapper around the system ssh and parses its own
-    // flags first, so everything meant for ssh has to follow `--`.
-    return this.transport === 'tailscale' ? ['ssh', '--'] : []
+  connectorArgv(sshArgs) {
+    return this.transport === 'tailscale'
+      ? [this.tailscaleBin, 'ssh', this.destination, ...sshArgs]
+      : [this.sshBin, ...sshArgs, this.destination]
   }
 
   /** The binary that talks to the far side, before any wrapper is applied. */
@@ -314,7 +319,7 @@ export class SshTransport {
    * @returns argv for `spawn`.
    */
   commandArgv(remoteSource) {
-    const connector = [this.connectorBin(), ...this.prefixArgv(), ...this.baseArgs(), this.destination, remoteSource]
+    const connector = [...this.connectorArgv(this.baseArgs()), remoteSource]
     // sshpass answers the prompt for whatever it wraps, so it takes the leading
     // position and the connector becomes its argument.
     return this.usesPassword ? [this.sshpassBin, '-e', ...connector] : connector
@@ -459,7 +464,8 @@ export class SshTransport {
   async close() {
     try {
       await new Promise((resolve) => {
-        const child = spawn(this.connectorBin(), [...this.prefixArgv(), ...this.baseArgs(), '-O', 'exit', this.destination], { stdio: 'ignore' })
+        const [bin, ...rest] = this.connectorArgv([...this.baseArgs(), '-O', 'exit'])
+        const child = spawn(bin, rest, { stdio: 'ignore' })
         child.once('close', resolve)
         child.once('error', resolve)
       })

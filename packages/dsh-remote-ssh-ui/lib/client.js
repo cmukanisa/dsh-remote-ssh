@@ -87,6 +87,11 @@ window.__ModuleLoader__.load({
 				"error.refused": "connection refused",
 				"tailnet.peers": "From Tailscale ({n} peers, MagicDNS)",
 				"tailnet.legend": "● online · ○ offline · ⚡ Tailscale SSH available",
+				"tailnet.address": "Fill the host with",
+				"tailnet.addressDns": "MagicDNS name",
+				"tailnet.addressIp": "Tailscale IP",
+				"field.keyHint": "Leave empty to use your SSH agent and ~/.ssh/config; otherwise the path of the key file on this computer.",
+				"action.home": "Home folder",
 				"transport.opensshHint": "Plain ssh. On a MagicDNS name or a 100.x address the traffic already goes over WireGuard.",
 				"transport.tailscaleHint": "Goes through the Tailscale client: MagicDNS resolution, access governed by tailnet ACLs, host key verified against the coordination server.",
 				"transport.openssh": "OpenSSH",
@@ -156,6 +161,11 @@ window.__ModuleLoader__.load({
 				"error.refused": "connexion refusée",
 				"tailnet.peers": "Depuis Tailscale ({n} pairs, MagicDNS)",
 				"tailnet.legend": "● en ligne · ○ hors ligne · ⚡ Tailscale SSH disponible",
+				"tailnet.address": "Remplir l'hôte avec",
+				"tailnet.addressDns": "le nom MagicDNS",
+				"tailnet.addressIp": "l'IP Tailscale",
+				"field.keyHint": "Vide : votre agent SSH et ~/.ssh/config ; sinon le chemin du fichier de clé sur cet ordinateur.",
+				"action.home": "Dossier personnel",
 				"transport.opensshHint": "ssh classique. Sur un nom MagicDNS ou une adresse 100.x, le trafic passe déjà par WireGuard.",
 				"transport.tailscaleHint": "Passe par le client Tailscale : résolution MagicDNS, accès par les ACL du tailnet, clé d'hôte vérifiée auprès du serveur de coordination.",
 				"transport.openssh": "OpenSSH",
@@ -225,6 +235,11 @@ window.__ModuleLoader__.load({
 				"error.refused": "连接被拒绝",
 				"tailnet.peers": "来自 Tailscale（{n} 个节点，MagicDNS）",
 				"tailnet.legend": "● 在线 · ○ 离线 · ⚡ 可用 Tailscale SSH",
+				"tailnet.address": "主机字段填入",
+				"tailnet.addressDns": "MagicDNS 名称",
+				"tailnet.addressIp": "Tailscale IP",
+				"field.keyHint": "留空则使用 SSH agent 与 ~/.ssh/config；否则填写本机上密钥文件的路径。",
+				"action.home": "主目录",
 				"transport.opensshHint": "普通 ssh。使用 MagicDNS 名称或 100.x 地址时，流量已经过 WireGuard。",
 				"transport.tailscaleHint": "经由 Tailscale 客户端：解析 MagicDNS、由 tailnet ACL 控制访问、并通过协调服务器校验主机密钥。",
 				"transport.openssh": "OpenSSH",
@@ -291,12 +306,17 @@ window.__ModuleLoader__.load({
 			}),
 			body: { flex: 1, minHeight: 180, overflowY: "auto", padding: 16 },
 			row: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+			// A selected chip is filled, not just outlined: the outline alone read
+			// as "online" next to the presence dot.
 			chip: (active) => ({
 				cursor: "pointer", border: `0.5px solid ${active ? C.accent : C.border}`, borderRadius: 999,
-				padding: "4px 10px", fontSize: 12, fontFamily: FONT, background: "transparent",
+				padding: "4px 10px", fontSize: 12, fontFamily: FONT,
+				background: active ? "color-mix(in srgb, var(--dsw-alias-state-business-primary, #4c8dff) 18%, transparent)" : "transparent",
 				color: active ? C.text : C.dim
 			}),
-			list: { marginTop: 10, border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" },
+			// The entry list scrolls on its own: a server root has dozens of rows
+			// and the dialog must keep its footer (the adopt button) in view.
+			list: { marginTop: 10, border: `0.5px solid ${C.border}`, borderRadius: 10, overflowY: "auto", maxHeight: "min(360px, 45vh)" },
 			item: (isDir) => ({
 				display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
 				padding: "8px 12px", fontSize: 13, fontFamily: FONT, color: isDir ? C.text : C.faint,
@@ -321,6 +341,9 @@ window.__ModuleLoader__.load({
 			note: { fontSize: 12, color: C.faint, lineHeight: "18px" },
 			error: { fontSize: 12, color: C.danger, marginTop: 8, whiteSpace: "pre-wrap" },
 			status: (ok) => ({ fontSize: 12, color: ok ? C.ok : C.faint, marginLeft: 6 }),
+			// The presence dot: green when online, faint when not — the chip text
+			// keeps its own colour so the dot reads as a state, not as emphasis.
+			dot: (on) => ({ color: on ? C.ok : C.faint }),
 			icon: { width: 16, display: "inline-block", textAlign: "center" }
 		};
 
@@ -342,6 +365,7 @@ window.__ModuleLoader__.load({
 		function Field(props) {
 			return h("label", { style: styles.field },
 				h("span", { style: styles.label }, props.label),
+				props.hint === undefined ? null : h("span", { style: { ...styles.note, display: "block", marginBottom: 4 } }, props.hint),
 				h("input", {
 					style: styles.input,
 					type: props.type ?? "text",
@@ -359,18 +383,30 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = react.useState(false);
 			const [error, setError] = react.useState(undefined);
 			const set = (key) => (value) => setDraft((previous) => ({ ...previous, [key]: value }));
+			// A name the person typed is theirs; one a peer chip filled follows the
+			// next chip, or the second server keeps the first one's name.
+			const [labelTyped, setLabelTyped] = react.useState(false);
+			// The chip whose values sit in the form, shown checked; typing another
+			// host by hand unchecks it, since the form no longer describes that peer.
+			const [peerId, setPeerId] = react.useState(undefined);
+			// Which address a chip writes into Host. MagicDNS is the default; the IP
+			// is for a tailnet without MagicDNS, or a node whose name will not resolve.
+			const [addressMode, setAddressMode] = react.useState("dns");
+			const typeLabel = (value) => { setLabelTyped(value !== ""); set("label")(value); };
 			const tailnet = props.tailnet;
 			const peers = tailnet !== undefined && tailnet.available === true ? tailnet.peers : [];
 
 			// Picking a peer fills the fields rather than hiding them: MagicDNS names
 			// and the tailnet user are a starting point a person still has to confirm.
-			const usePeer = (peer) => setDraft((previous) => ({
+			const hostOf = (peer, mode) => (mode === "dns" && peer.dnsName !== "" ? peer.dnsName : peer.address);
+			const usePeer = (peer, mode = addressMode) => { setPeerId(peer.id); setDraft((previous) => ({
 				...previous,
-				host: peer.dnsName !== "" ? peer.dnsName : peer.address,
+				host: hostOf(peer, mode),
 				user: peer.user === undefined ? previous.user : String(peer.user).split("@")[0],
-				label: previous.label === "" ? peer.hostName : previous.label,
+				label: labelTyped ? previous.label : peer.hostName,
 				transport: peer.tailscaleSsh ? "tailscale" : "openssh"
-			}));
+			})); };
+			const typeHost = (value) => { setPeerId(undefined); set("host")(value); };
 
 			const submit = () => {
 				if (draft.host.trim() === "") { setError(T("error.hostRequired")); return; }
@@ -386,11 +422,25 @@ window.__ModuleLoader__.load({
 					peers.slice(0, 8).map((peer) => h("button", {
 						key: peer.id,
 						title: `${peer.hostName} — ${peer.os}${peer.online ? "" : " (hors ligne)"}${peer.tailscaleSsh ? " — Tailscale SSH" : ""}`,
-						style: styles.chip(peer.online === true),
+						style: styles.chip(peer.id === peerId),
+						"aria-pressed": peer.id === peerId,
 						onClick: () => usePeer(peer)
-					}, peer.online === true ? "● " : "○ ", peer.hostName, peer.tailscaleSsh ? " ⚡" : ""))
+					}, h("span", { style: styles.dot(peer.online === true) }, peer.online === true ? "● " : "○ "), peer.hostName, peer.tailscaleSsh ? " ⚡" : "", peer.id === peerId ? " ✓" : ""))
 				),
-				h("div", { style: { ...styles.note, marginTop: 4 } }, T("tailnet.legend"))
+				h("div", { style: { ...styles.note, marginTop: 4 } }, T("tailnet.legend")),
+				h("div", { style: { ...styles.row, marginTop: 6 } },
+					h("span", { style: { ...styles.label, margin: 0 } }, T("tailnet.address")),
+					["dns", "ip"].map((mode) => h("button", {
+						key: mode,
+						style: styles.chip(addressMode === mode),
+						"aria-pressed": addressMode === mode,
+						onClick: () => {
+							setAddressMode(mode);
+							const selected = peers.find((peer) => peer.id === peerId);
+							if (selected !== undefined) usePeer(selected, mode);
+						}
+					}, mode === "dns" ? T("tailnet.addressDns") : T("tailnet.addressIp")))
+				)
 			);
 
 			const transportPicker = h("div", { style: { ...styles.row, marginBottom: 10 } },
@@ -408,13 +458,13 @@ window.__ModuleLoader__.load({
 				peerList,
 				transportPicker,
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
-					h(Field, { label: T("field.label"), value: draft.label, onChange: set("label"), placeholder: T("placeholder.label") }),
-					h(Field, { label: T("field.host"), value: draft.host, onChange: set("host"), placeholder: T("placeholder.host") }),
+					h(Field, { label: T("field.label"), value: draft.label, onChange: typeLabel, placeholder: T("placeholder.label") }),
+					h(Field, { label: T("field.host"), value: draft.host, onChange: typeHost, placeholder: T("placeholder.host") }),
 					h("div", { style: { flex: "0 0 90px" } }, h(Field, { label: T("field.port"), value: draft.port, onChange: set("port") }))
 				),
 				h("div", { style: { ...styles.row, marginBottom: 10, alignItems: "flex-end" } },
 					h(Field, { label: T("field.user"), value: draft.user, onChange: set("user"), placeholder: T("placeholder.user") }),
-					h(Field, { label: T("field.key"), value: draft.identityFile, onChange: set("identityFile"), placeholder: T("placeholder.key") }),
+					h(Field, { label: T("field.key"), value: draft.identityFile, onChange: set("identityFile"), placeholder: T("placeholder.key"), hint: T("field.keyHint") }),
 					h(Field, { label: T("field.password"), value: draft.password, onChange: set("password"), type: "password" })
 				),
 				h("div", { style: styles.row },
@@ -431,9 +481,12 @@ window.__ModuleLoader__.load({
 		 *
 		 * Occupying the workspace hole means owning the whole flow, so the local
 		 * half is this plugin's responsibility too. It talks to whichever
-		 * directory-picking backend the deployment composed: `list` and
-		 * `createDirectory` come from the in-app browser, `pick` from the OS
-		 * chooser, and a deployment offers one or the other.
+		 * directory-picking backend the deployment composed, through ui-workspace's
+		 * service rather than the raw Remote namespace: the namespace answers with
+		 * a `{ ok, value }` envelope, and reading `.entries` off that envelope is
+		 * what once crashed this tab. `list` and `createDirectory` come from the
+		 * in-app browser, `pick` from the OS chooser; a deployment offers one or
+		 * the other.
 		 */
 		function LocalBrowser(props) {
 			const ctx = props.ctx;
@@ -445,7 +498,7 @@ window.__ModuleLoader__.load({
 				const controller = new AbortController();
 				abort.current = controller;
 				setState((previous) => ({ ...previous, loading: true, error: undefined }));
-				ctx.remote.directoryPicker.list(path, controller.signal).then((listing) => {
+				ctx.uiWorkspace.listDirectory(path, controller.signal).then((listing) => {
 					setState({ loading: false, error: undefined, path: listing.path, entries: listing.entries, home: listing.home, browsable: true });
 					props.onPathChange(listing.path);
 				}).catch((reason) => {
@@ -468,7 +521,7 @@ window.__ModuleLoader__.load({
 				const name = props.newFolder;
 				props.onNewFolder(undefined);
 				if (name === undefined || name.trim() === "") return;
-				ctx.remote.directoryPicker.createDirectory(state.path, name).then(() => load(state.path))
+				ctx.uiWorkspace.createDirectory(state.path, name).then(() => load(state.path))
 					.catch((reason) => setState((previous) => ({ ...previous, error: reason instanceof Error ? reason.message : String(reason) })));
 			};
 
@@ -581,6 +634,8 @@ window.__ModuleLoader__.load({
 					h("button", { style: styles.chip(false), onClick: props.onAddProfile }, T("action.addServer"))
 				),
 				h("div", { style: styles.crumbs },
+					state.home === undefined ? null : h("button", { style: styles.crumb, title: T("action.home"), "aria-label": T("action.home"), onClick: () => load(state.home) }, "⌂"),
+					state.home === undefined ? null : h("span", null, " · "),
 					(state.crumbs ?? []).map((crumb, index) => h(react.Fragment, { key: crumb.path },
 						index > 0 ? h("span", null, " / ") : null,
 						h("button", { style: styles.crumb, onClick: () => load(crumb.path) }, crumb.name)
@@ -610,7 +665,7 @@ window.__ModuleLoader__.load({
 		 */
 		function RemoteDirectoryFlow(props) {
 			const ctx = props.ctx;
-			const [tab, setTab] = react.useState("remote");
+			const [tab, setTab] = react.useState("local");
 			const [status, setStatus] = react.useState(undefined);
 			const [profileId, setProfileId] = react.useState(undefined);
 			const [adding, setAdding] = react.useState(false);
@@ -626,12 +681,18 @@ window.__ModuleLoader__.load({
 				}).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
 			}, [ctx]);
 
+			// Every opening is the same fresh choice: this computer first, no path
+			// carried over. The component stays mounted between openings, so without
+			// this the dialog reopened on whichever tab was used last.
 			react.useEffect(() => {
 				if (props.open !== true) return undefined;
-				setError(undefined); setAdding(false); setPath(undefined);
+				setError(undefined); setAdding(false); setPath(undefined); setNewFolder(undefined); setTab("local");
 				refresh();
 				return undefined;
 			}, [props.open, refresh]);
+			// A path belongs to the tab it was chosen on: a remote folder must not
+			// become the "local folder" the other tab offers to adopt.
+			const switchTab = (next) => { if (next !== tab) { setTab(next); setPath(undefined); setNewFolder(undefined); setError(undefined); } };
 
 			if (props.open !== true) return null;
 
@@ -694,8 +755,8 @@ window.__ModuleLoader__.load({
 						h("button", { style: styles.button(false, false), onClick: close }, "✕")
 					),
 					h("div", { style: styles.tabs },
-						h("button", { style: styles.tab(tab === "local"), onClick: () => setTab("local") }, T("tab.local")),
-						h("button", { style: styles.tab(tab === "remote"), onClick: () => setTab("remote") }, T("tab.remote"))
+						h("button", { style: styles.tab(tab === "local"), onClick: () => switchTab("local") }, T("tab.local")),
+						h("button", { style: styles.tab(tab === "remote"), onClick: () => switchTab("remote") }, T("tab.remote"))
 					),
 					h("div", { style: styles.body }, body, error === undefined ? null : h("div", { style: styles.error }, error)),
 					h("div", { style: styles.foot },
@@ -899,7 +960,10 @@ window.__ModuleLoader__.load({
 		}
 
 		exports.apply = apply;
-		exports.inject = ["slots", "connection", "locale", "uiWorkspace", "remote.directoryPicker"];
+		// Only services the bundle actually reads: an undeclared `ctx.<service>`
+		// read throws inside a render, the occupant abdicates, and the hole falls
+		// back to the OS chooser until the page is reloaded.
+		exports.inject = ["slots", "connection", "locale", "uiWorkspace"];
 		return module.exports;
 	}
 });

@@ -80,12 +80,18 @@ check('a tailnet-shaped host does NOT switch the transport by itself', plain.tra
 const viaTailscale = new SshTransport({ ...base, transport: 'tailscale' }, { controlDir: '/tmp/dsh-ts-client' })
 const tsArgv = viaTailscale.commandArgv('echo hi')
 check('the Tailscale transport runs the Tailscale client', tsArgv[0] === 'tailscale', tsArgv[0])
-check('the Tailscale client is told to ssh, after the separator', tsArgv[1] === 'ssh' && tsArgv[2] === '--', tsArgv.slice(0, 3).join(' '))
-check('ssh options follow the separator, where the wrapper forwards them', tsArgv.slice(3).some((value) => value === '-T'))
-check('the destination and command stay last', tsArgv[tsArgv.length - 2] === 'deploy@build-a.example-tailnet.ts.net' && tsArgv[tsArgv.length - 1] === 'echo hi')
+// Proven against tailscale 1.102: only `tailscale ssh user@host <options>`
+// resolves the name through MagicDNS and checks the advertised host key. The
+// former `ssh -- <options> user@host` form handed everything to the system
+// ssh, which resolved the name through ~/.ssh/config and failed host-key
+// verification.
+check('the Tailscale client is told to ssh, destination first', tsArgv[1] === 'ssh' && tsArgv[2] === 'deploy@build-a.example-tailnet.ts.net', tsArgv.slice(0, 3).join(' '))
+check('no `--` separator: it would hide the destination from the wrapper', !tsArgv.includes('--'), tsArgv.join(' '))
+check('ssh options follow the destination, where the wrapper forwards them', tsArgv.slice(3).some((value) => value === '-T'))
+check('the command stays last', tsArgv[tsArgv.length - 1] === 'echo hi')
 // Windows OpenSSH has no connection multiplexing at all, so the transport omits
 // it there whatever the transport mode is; everywhere else Tailscale mode keeps
-// it, because the wrapper execs the system ssh with these options after `--`.
+// it, because the wrapper execs the system ssh with these options.
 if (process.platform === 'win32') {
   check('a Windows client omits multiplexing in Tailscale mode too', !tsArgv.some((value) => value.startsWith('ControlPath=')), tsArgv.join(' '))
 } else {
