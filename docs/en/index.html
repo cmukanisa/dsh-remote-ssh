@@ -105,6 +105,7 @@
       <tr><td><code>--no-color</code></td><td>plain output (also honours <code>NO_COLOR</code>)</td></tr>
       <tr><td><code>--uninstall</code></td><td>remove the packages, the composition rows, and the setting</td></tr>
       <tr><td><code>--dsh-home DIR</code></td><td>target a different harness home</td></tr>
+      <tr><td><code>--harness-port N</code></td><td>port a running <code>dsh web</code> answers on, so the closing line can name it when a restart is due (default: 3080)</td></tr>
     </table>
   </section>
 
@@ -167,11 +168,17 @@
         bundle is served from bytes that <code>dsh-client-hmr</code> polls, so a new bundle is a new
         revision;</li>
       <li><strong>restart the harness</strong> (<code>dsh web</code>) when the <strong>host
-        half</strong> (<code>lib/*.js</code>) changed — Node's ESM loader keeps the module it booted
-        with — or when a <strong>package was renamed</strong>: the harness keys its client-module
-        table on the name it read at boot and keeps serving the new bundle under the old id, so every
-        page load fails with <code>loaded without registering</code>. The installer detects both and
-        says so.</li>
+        half</strong> changed — every file but the bundle, <code>package.json</code> included (its
+        <code>exports</code> and <code>dsh.client.inject</code> are read at boot; a version bump alone
+        is not a change) — because Node's ESM loader keeps the modules it booted with; or when a
+        <strong>package was renamed</strong>: the harness keys its client-module table on the name it
+        read at boot and keeps serving the new bundle under the old id, so every page load fails with
+        <code>loaded without registering</code>. A <code>--link</code> install is the checkout itself,
+        so a re-run always asks for a restart. The installer detects all of this
+        (<code>--dry-run</code> previews the verdict), and knocks on the harness port
+        (<code>--harness-port</code>, default 3080) so the closing line names the running
+        <code>dsh web</code>, says none answered, or says what answers there is not
+        <code>dsh web</code>.</li>
     </ul>
     <pre><code>node install.mjs       # or the curl one-liner again</code></pre>
   </section>

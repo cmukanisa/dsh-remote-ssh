@@ -107,6 +107,7 @@
       <tr><td><code>--no-color</code></td><td>sortie sans couleur (respecte aussi <code>NO_COLOR</code>)</td></tr>
       <tr><td><code>--uninstall</code></td><td>retirer les paquets, les lignes de composition et le réglage</td></tr>
       <tr><td><code>--dsh-home DIR</code></td><td>cibler un autre dossier de harness</td></tr>
+      <tr><td><code>--harness-port N</code></td><td>port sur lequel répond un <code>dsh web</code> en cours, pour que la dernière ligne le nomme quand un redémarrage s'impose (défaut : 3080)</td></tr>
     </table>
   </section>
 
@@ -171,11 +172,18 @@
         changé : le bundle est servi depuis des octets que <code>dsh-client-hmr</code> surveille, un
         nouveau bundle est une nouvelle révision ;</li>
       <li><strong>redémarrer le harness</strong> (<code>dsh web</code>) quand la <strong>moitié
-        hôte</strong> (<code>lib/*.js</code>) a changé — le loader ESM de Node garde le module chargé
-        au démarrage — ou quand un <strong>paquet a été renommé</strong> : le harness indexe ses
-        modules client sur le nom lu au démarrage et continue de servir le nouveau bundle sous
+        hôte</strong> a changé — tout fichier sauf le bundle, <code>package.json</code> compris (ses
+        <code>exports</code> et <code>dsh.client.inject</code> sont lus au démarrage ; un simple
+        changement de version n'en est pas un) — parce que le loader ESM de Node garde les modules
+        chargés au démarrage ; ou quand un <strong>paquet a été renommé</strong> : le harness indexe
+        ses modules client sur le nom lu au démarrage et continue de servir le nouveau bundle sous
         l'ancien identifiant, si bien que chaque chargement de page échoue avec
-        <code>loaded without registering</code>. L'installeur détecte les deux cas et le dit.</li>
+        <code>loaded without registering</code>. Une installation <code>--link</code> est le dépôt
+        lui-même : la relancer demande toujours un redémarrage. L'installeur détecte tout cela
+        (<code>--dry-run</code> prévisualise le verdict) et frappe au port du harness
+        (<code>--harness-port</code>, 3080 par défaut) pour que la dernière ligne nomme le
+        <code>dsh web</code> en cours, dise qu'aucun n'a répondu, ou que ce qui répond n'est pas
+        <code>dsh web</code>.</li>
     </ul>
     <pre><code>node install.mjs       # ou la commande curl à nouveau</code></pre>
   </section>

@@ -32,13 +32,14 @@
  * separate, audited step.
  *
  * Usage:
- *   node install.mjs [--keep-off] [--link] [--dry-run] [--no-color] [--dsh-home DIR] [--uninstall]
+ *   node install.mjs [--keep-off] [--link] [--dry-run] [--no-color] [--dsh-home DIR] [--harness-port N] [--uninstall]
  */
-import { accessSync, constants, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { request } from 'node:http'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGES = ['dsh-remote-ssh', 'dsh-remote-ssh-ui']
@@ -49,6 +50,11 @@ const AUTHOR = 'Christian Kasse (cmukanisa)'
 const HOMEPAGE = 'https://github.com/cmukanisa/dsh-remote-ssh'
 /** The Node range the harness itself requires. */
 const NODE_FLOOR = '22.19'
+/** Where `dsh web` listens unless started with `--port`: the harness's own default. */
+const HARNESS_PORT = 3080
+/** The probe's hard deadline and the most body it reads to find the fingerprint. */
+const PROBE_DEADLINE_MS = 1000
+const PROBE_BODY_BYTES = 512
 /** Each composition row's module, checked for the shape the loader requires. */
 const ROWS = [
   { id: 'remote-ssh', module: 'registry.js' },
@@ -186,7 +192,7 @@ class RequirementError extends Error {
 
 /** Parse the small flag surface; no dependency, no config file. */
 function parseArgs(argv) {
-  const options = { enable: true, force: false, link: false, dryRun: false, uninstall: false, dshHome: undefined }
+  const options = { enable: true, force: false, link: false, dryRun: false, uninstall: false, dshHome: undefined, harnessPort: HARNESS_PORT }
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]
     if (flag === '--keep-off' || flag === '--no-enable') options.enable = false
@@ -196,6 +202,12 @@ function parseArgs(argv) {
     else if (flag === '--uninstall') options.uninstall = true
     else if (flag === '--no-color') continue
     else if (flag === '--dsh-home') { index += 1; options.dshHome = argv[index] }
+    else if (flag === '--harness-port') {
+      index += 1
+      const port = Number(argv[index])
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`--harness-port expects a TCP port, got: ${argv[index]}`)
+      options.harnessPort = port
+    }
     else if (flag === '--help' || flag === '-h') { printHelp(); process.exit(0) }
     else throw new Error(`unknown option: ${flag}`)
   }
@@ -214,8 +226,9 @@ function printHelp() {
     ['--uninstall', 'remove the packages, the composition rows, and the setting'],
     ['--no-color', 'plain output'],
     ['--dsh-home DIR', 'harness home to install into (default: $DSH_HOME or ~/.dsh)'],
+    ['--harness-port N', `port a running dsh web answers on, so the closing line can name it when a restart is due (default: ${HARNESS_PORT})`],
   ]
-  for (const [flag, description] of rows) line(`${brand(flag.padEnd(15))} ${dim(description)}`)
+  for (const [flag, description] of rows) line(`${brand(flag.padEnd(17))} ${dim(description)}`)
   line()
   line(dim('Installing activates the plugin; the installer is idempotent, so re-running it replaces its own block.'))
   line()
@@ -321,7 +334,7 @@ function compareVersions(left, right) {
  * from where the packages will sit. Tailscale is reported but optional.
  * @param context - the resolved paths this run touches.
  */
-function checkAll(context) {
+async function checkAll(context) {
   const { dshHome, profilesDir, pluginsDir } = context
 
   const nodeVersion = process.versions.node
@@ -330,6 +343,12 @@ function checkAll(context) {
   if (!nodeOk) throw new RequirementError(`Node ${nodeVersion} is older than ${NODE_FLOOR}`, 'upgrade Node; the harness itself refuses to boot below this range')
 
   step('ok', 'platform', `${process.platform} ${dim(process.arch)}`)
+
+  const { harness } = context
+  harness.state = await probeHarness(harness.port)
+  if (harness.state === 'running') step('info', 'dsh web', `running on 127.0.0.1:${harness.port}`)
+  else if (harness.state === 'other') step('info', 'dsh web', `something else answers on 127.0.0.1:${harness.port} ${dim('(--harness-port to point elsewhere)')}`)
+  else step('info', 'dsh web', `none on 127.0.0.1:${harness.port} ${dim('(--harness-port if it listens elsewhere)')}`)
 
   // `ssh -V` prints its banner on STDERR and exits 0, so the version comes from
   // the merged streams rather than from stdout alone.
@@ -393,16 +412,18 @@ function installPackages(options, context) {
     const source = requirePath(join(HERE, 'packages', name), `package ${name}`)
     const destination = join(context.pluginsDir, name)
     const files = countFiles(source)
+    // The comparison is read-only, so a dry run previews the verdict too.
+    recordUpgradeImpact(source, destination, context)
     if (options.dryRun) {
       step('info', 'would', `${options.link ? 'link' : 'copy'} ${name} ${glyph.arrow} ${shorten(destination, context.dshHome)} ${dim(`(${files} files)`)}`)
       continue
     }
-    recordUpgradeImpact(source, destination, context)
     rmSync(destination, { recursive: true, force: true })
     if (options.link) {
       // A symlinked package is imported through its real path, so Node resolves
       // its bare `@deepseek-ai/dsh-*` imports from the SOURCE tree — which is why
       // `--link` only works for a checkout that sits under the profiles root.
+      mkdirSync(context.pluginsDir, { recursive: true })
       symlinkSync(source, destination, 'dir')
       step('ok', 'linked', `${name} ${glyph.arrow} ${dim(shorten(destination, context.dshHome))}`)
     } else {
@@ -413,33 +434,86 @@ function installPackages(options, context) {
 }
 
 /**
+ * Is a `dsh web` answering on the loopback port?
+ *
+ * No process table is read: `ps` differs per platform and a harness started
+ * from another user or container is invisible to it anyway. What is portable is
+ * the server's own unauthenticated answer, a 401 whose body names `dsh web`.
+ * A refused connection is 'absent'; anything else that holds the port — a
+ * stranger, a silent listener, a non-HTTP banner — is 'other'. The probe never
+ * throws and is bounded by a hard deadline, not by socket idleness: a stranger
+ * that trickles a body forever must not stall the installer.
+ * @param port - the loopback port to knock on.
+ * @returns 'running' | 'absent' | 'other'
+ */
+function probeHarness(port) {
+  return new Promise((resolve) => {
+    let done = false
+    let deadline
+    const settle = (state) => {
+      if (done) return
+      done = true
+      clearTimeout(deadline)
+      req.destroy()
+      resolve(state)
+    }
+    const req = request({ host: '127.0.0.1', port, path: '/', method: 'GET' }, (res) => {
+      if (res.statusCode !== 401) { settle('other'); return }
+      let body = ''
+      res.setEncoding('utf8')
+      const judge = () => settle(body.includes('dsh web') ? 'running' : 'other')
+      res.on('data', (chunk) => {
+        body += chunk.slice(0, PROBE_BODY_BYTES - body.length)
+        if (body.includes('dsh web') || body.length >= PROBE_BODY_BYTES) judge()
+      })
+      res.on('end', judge)
+      res.on('error', () => settle('other'))
+    })
+    deadline = setTimeout(() => settle('other'), PROBE_DEADLINE_MS)
+    req.on('error', (error) => settle(error?.code === 'ECONNREFUSED' ? 'absent' : 'other'))
+    req.end()
+  })
+}
+
+/**
  * What a running harness would NOT pick up from this upgrade.
  *
  * A running `dsh web` keys its client-module table on the package NAME it read
  * at boot and serves the bundle under that id: after a rename, the new bundle
  * registers a different id and the page fails with "loaded without
- * registering". The host half is cached by Node's ESM loader, so a changed
- * `lib/*.js` other than the bundle is not seen either. Both are recorded here
- * so the closing line can say "restart" instead of "reload".
+ * registering". The host half — every file but the bundle, `package.json`
+ * included since its `exports` and `dsh.client.inject` are read at boot — is
+ * cached by Node's ESM loader, so a change there is not seen either. Both are
+ * recorded here so the closing line can say "restart" instead of "reload".
  * @param source - the package directory in this checkout.
  * @param destination - the currently installed copy, if any.
  * @param context - receives `renamed` and `hostChanged`.
  */
 function recordUpgradeImpact(source, destination, context) {
+  // A --link install is a symlink onto the very checkout being compared, so a
+  // file-by-file diff would always come back equal. What the running harness
+  // loaded at boot is unknowable here, so assume it differs.
+  let linked = false
+  try { linked = lstatSync(destination).isSymbolicLink() } catch (error) { if (error?.code !== 'ENOENT') throw error }
+  if (linked) { context.hostChanged = true; return }
   const installed = readIfPresent(join(destination, 'package.json'))
   if (installed === '') return
+  const nextManifest = readFileSync(join(source, 'package.json'), 'utf8')
+  const nextName = JSON.parse(nextManifest).name
   let previousName
-  try { previousName = JSON.parse(installed).name } catch { return }
-  const nextName = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).name
+  try { previousName = JSON.parse(installed).name } catch { previousName = undefined }
   if (typeof previousName === 'string' && previousName !== nextName) context.renamed.push({ from: previousName, to: nextName })
   const bundle = join('lib', 'client.js')
   for (const file of listFiles(source)) {
-    if (file === bundle || file === `${bundle}.map`) continue
-    const previous = readIfPresent(join(destination, file))
-    const next = readFileSync(join(source, file), 'utf8')
+    if (file === bundle) continue
+    // An installed file that cannot be read (a directory in its place, another
+    // account's permissions, a corrupt manifest) is a difference, not a failure.
+    let previous
+    try { previous = readFileSync(join(destination, file), 'utf8') } catch { previous = undefined }
+    const next = file === 'package.json' ? nextManifest : readFileSync(join(source, file), 'utf8')
     // The manifest is read at boot too (exports, dsh.client.inject), but a
     // version bump alone changes nothing the harness holds in memory.
-    const changed = file === 'package.json' ? withoutVersion(previous) !== withoutVersion(next) : previous !== next
+    const changed = previous === undefined || (file === 'package.json' ? withoutVersion(previous) !== withoutVersion(next) : previous !== next)
     if (changed) { context.hostChanged = true; return }
   }
 }
@@ -743,6 +817,7 @@ async function main() {
     settingsPath: join(dshHome, 'settings.yaml'),
     renamed: [],
     hostChanged: false,
+    harness: { port: options.harnessPort, state: undefined },
   }
 
   header(dshHome)
@@ -767,7 +842,7 @@ async function main() {
   }
 
   phase('checking')
-  checkAll(context)
+  await checkAll(context)
 
   // Everything from here on is reversible. The snapshot is taken before the first
   // write, so a failed copy, a failed settings write, or a failed verification all
@@ -804,15 +879,24 @@ async function main() {
   // install. Saying otherwise would be dead code that reads as a real case.
   line()
   rule()
-  if (options.dryRun) {
-    line(`${cyan(bold('Dry run.'))} Nothing was written; every check above passed. A real run would leave the plugin ${enabled === true ? 'enabled' : 'switched off'}.`)
-  } else if (context.renamed.length > 0 || context.hostChanged) {
+  const restartDue = context.renamed.length > 0 || context.hostChanged
+  if (restartDue) {
     // A page reload is not enough here; a running harness keeps serving the
     // old package identity (or the old host module) until it is restarted.
     for (const { from, to } of context.renamed) step('warn', 'renamed', `${from} ${glyph.arrow} ${to}: a running harness still serves the old id`)
-    if (context.hostChanged) step('warn', 'host half', 'changed: a running harness keeps the module it loaded at boot')
+    if (context.hostChanged) step('warn', 'host half', 'changed: a running harness keeps the modules it loaded at boot')
     line()
-    line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} ${yellow(bold('Restart the harness'))} (${cyan('dsh web')}) — reloading the page is not enough for this upgrade${enabled === true ? `, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}` : ''}.`)
+  }
+  if (options.dryRun) {
+    line(`${cyan(bold('Dry run.'))} Nothing was written; every check above passed. A real run would leave the plugin ${enabled === true ? 'enabled' : 'switched off'}${restartDue ? `, and would need the harness ${bold('restarted')}, not just the page reloaded` : ''}.`)
+  } else if (restartDue) {
+    const { harness } = context
+    const who = harness.state === 'running'
+      ? `${yellow(bold('Restart the harness'))} running on ${cyan(`127.0.0.1:${harness.port}`)}`
+      : harness.state === 'absent'
+        ? `${yellow(bold('Restart the harness'))} (${cyan('dsh web')}) if one was already running ${dim(`— none answered on 127.0.0.1:${harness.port}`)}`
+        : `${yellow(bold('Restart the harness'))} (${cyan('dsh web')}) if one was already running ${dim(`— what answers on 127.0.0.1:${harness.port} is not dsh web`)}`
+    line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} ${who} — reloading the page is not enough for this upgrade${enabled === true ? `, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}` : ''}.`)
   } else if (enabled === true) {
     line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} Reload the harness page, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}.`)
   } else {

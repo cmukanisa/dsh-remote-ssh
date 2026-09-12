@@ -89,6 +89,7 @@ Three durable changes, idempotent on every re-run:
 | `--no-color` | plain output (also honours `NO_COLOR`) |
 | `--uninstall` | remove the packages, the composition rows, and the setting |
 | `--dsh-home DIR` | target a different harness home |
+| `--harness-port N` | port a running `dsh web` answers on, so the closing line can name it when a restart is due (default: 3080) |
 
 A re-install never flips an existing `remote-ssh.enabled` on its own: that value is
 your answer, and `--enable` is the only thing that overrides it.
@@ -171,11 +172,17 @@ says which of two things the running harness needs:
 
 - **reload the page** when only the **browser half** changed: the bundle is served
   from bytes that `dsh-client-hmr` polls, so a new bundle is a new revision;
-- **restart the harness** (`dsh web`) when the **host half** (`lib/*.js`) changed —
-  Node's ESM loader keeps the module it booted with — or when a **package was
-  renamed**: `dsh-client-modules` keys its table on the name it read at boot and
-  keeps serving the new bundle under the old id, so every page load fails with
-  `loaded without registering`. The installer detects both and says so.
+- **restart the harness** (`dsh web`) when the **host half** changed — every
+  file but the bundle, `package.json` included (its `exports` and
+  `dsh.client.inject` are read at boot; a version bump alone is not a change) —
+  because Node's ESM loader keeps the modules it booted with; or when a
+  **package was renamed**: `dsh-client-modules` keys its table on the name it
+  read at boot and keeps serving the new bundle under the old id, so every page
+  load fails with `loaded without registering`. A `--link` install is the
+  checkout itself, so a re-run always asks for a restart. The installer detects
+  all of this (`--dry-run` previews the verdict), and knocks on the harness port
+  (`--harness-port`, default 3080) so the closing line names the running
+  `dsh web`, says none answered, or says what answers there is not `dsh web`.
 
 ```sh
 node install.mjs       # or the curl one-liner again

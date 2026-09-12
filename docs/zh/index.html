@@ -103,6 +103,7 @@
       <tr><td><code>--no-color</code></td><td>纯文本输出（同样遵循 <code>NO_COLOR</code>）</td></tr>
       <tr><td><code>--uninstall</code></td><td>移除插件包、组合配置行与该项设置</td></tr>
       <tr><td><code>--dsh-home DIR</code></td><td>指定另一个 harness 主目录</td></tr>
+      <tr><td><code>--harness-port N</code></td><td>正在运行的 <code>dsh web</code> 所监听的端口，需要重启时最后一行会据此点名（默认 3080）</td></tr>
     </table>
   </section>
 
@@ -158,10 +159,14 @@
     <ul>
       <li>只有<strong>浏览器端</strong>变化时，<strong>刷新页面</strong>即可：bundle 由
         <code>dsh-client-hmr</code> 轮询的字节提供，新 bundle 就是新修订号；</li>
-      <li><strong>宿主端</strong>（<code>lib/*.js</code>）变化时——Node 的 ESM loader 会保留启动时加载的模块——
-        或者<strong>某个包被重命名</strong>时，需要<strong>重启 harness</strong>（<code>dsh web</code>）：
-        harness 以启动时读取的包名为键索引客户端模块，并继续用旧 id 提供新 bundle，于是每次加载页面都会
-        报 <code>loaded without registering</code>。安装器会检测这两种情况并明确提示。</li>
+      <li><strong>宿主端</strong>变化时——除 bundle 外的任何文件，包括 <code>package.json</code>（其
+        <code>exports</code> 与 <code>dsh.client.inject</code> 在启动时读取；仅改版本号不算变化）——因为
+        Node 的 ESM loader 会保留启动时加载的模块；或者<strong>某个包被重命名</strong>时，需要<strong>重启
+        harness</strong>（<code>dsh web</code>）：harness 以启动时读取的包名为键索引客户端模块，并继续用旧 id
+        提供新 bundle，于是每次加载页面都会报 <code>loaded without registering</code>。<code>--link</code>
+        安装就是代码库本身，重新运行总会要求重启。安装器会检测以上所有情况（<code>--dry-run</code>
+        可预览结论），还会探测 harness 端口（<code>--harness-port</code>，默认 3080），以便最后一行点名正在运行的
+        <code>dsh web</code>、说明无人应答，或说明应答者并非 <code>dsh web</code>。</li>
     </ul>
     <pre><code>node install.mjs       # 或再次执行 curl 一行命令</code></pre>
   </section>

@@ -44,10 +44,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registering "@deepseek-ai/dsh-remote-ssh-ui"`. Nothing on disk was wrong, and
   the closing line pointed at the one action that could not help. The installer
   now compares the installed copy with what it writes: a renamed package or a
-  changed host half (`lib/*.js` other than the bundle) is reported as a warning,
-  and the closing line says **restart the harness**. A bundle-only change still
-  says reload. Covered by `test/install.test.mjs`; the README and the three
-  documentation pages describe the two cases and the symptom.
+  changed host half (every file but the bundle, `package.json` beyond its
+  version included; a `--link` install, being the checkout itself, always
+  counts) is reported as a warning, and the closing line says **restart the
+  harness**. A bundle-only change still says reload; `--dry-run` previews the
+  verdict; an unreadable installed file counts as changed rather than failing
+  the install. The installer also knocks on the harness port (`--harness-port`,
+  default 3080; no process table is read, the unauthenticated `401` that names
+  `dsh web` is the fingerprint, under a hard one-second deadline) so that line
+  names the running `dsh web`, says none answered, or says what answers is not
+  `dsh web`. Covered by `test/install.test.mjs` with stand-in servers for each
+  half of the fingerprint, a silent listener and an endless body; the README and
+  the three documentation pages describe the cases, the flag, and the symptom.
+- **`--link` on a fresh harness home failed with `ENOENT` on the symlink**: the
+  copy path creates `profiles/plugins`, the link path did not. Found by the new
+  `--link` test.
 
 ### Added
 
