@@ -34,6 +34,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The installer said "reload the page" after an upgrade that a running harness
+  cannot see.** 0.3.0 renamed the browser package (`@deepseek-ai/dsh-remote-ssh-ui`
+  → `dsh-remote-ssh-ui`); a harness started before the re-install keeps the name
+  it read at boot in its client-module table and serves the new bundle under the
+  old id, so every page load failed with `Failed to load plugins … loaded without
+  registering "@deepseek-ai/dsh-remote-ssh-ui"`. Nothing on disk was wrong, and
+  the closing line pointed at the one action that could not help. The installer
+  now compares the installed copy with what it writes: a renamed package or a
+  changed host half (`lib/*.js` other than the bundle) is reported as a warning,
+  and the closing line says **restart the harness**. A bundle-only change still
+  says reload. Covered by `test/install.test.mjs`; the README and the three
+  documentation pages describe the two cases and the symptom.
+
 ### Added
 
 - **The interface is localized in English, French, and Chinese**, following the

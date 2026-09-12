@@ -160,13 +160,18 @@
 
   <section>
     <h2>Updating</h2>
-    <p>Re-run the installer. It rewrites its own composition block, which is enough to pick up a new
-      version <strong>without restarting the harness</strong>:</p>
+    <p>Re-run the installer. It rewrites its own composition block, and its closing line says which
+      of two things the running harness needs:</p>
     <ul>
-      <li>the <strong>browser half</strong> is served from bytes that <code>dsh-client-hmr</code>
-        polls, so replacing the installed bundle changes the revision the page is served;</li>
-      <li>a change to the <strong>host half</strong> (<code>lib/*.js</code>) is cached by Node's ESM
-        loader, so that one does need a harness restart.</li>
+      <li><strong>reload the page</strong> when only the <strong>browser half</strong> changed: the
+        bundle is served from bytes that <code>dsh-client-hmr</code> polls, so a new bundle is a new
+        revision;</li>
+      <li><strong>restart the harness</strong> (<code>dsh web</code>) when the <strong>host
+        half</strong> (<code>lib/*.js</code>) changed — Node's ESM loader keeps the module it booted
+        with — or when a <strong>package was renamed</strong>: the harness keys its client-module
+        table on the name it read at boot and keeps serving the new bundle under the old id, so every
+        page load fails with <code>loaded without registering</code>. The installer detects both and
+        says so.</li>
     </ul>
     <pre><code>node install.mjs       # or the curl one-liner again</code></pre>
   </section>
@@ -181,6 +186,7 @@
       <tr><td><code>glob</code>/<code>grep</code> say a program is missing</td><td>Install ripgrep on the server (<code>apt-get install ripgrep</code>, <code>dnf install ripgrep</code>, <code>apk add ripgrep</code>).</td></tr>
       <tr><td>A tailnet peer times out</td><td>Tailscale reported it offline; the connect form says so in advance.</td></tr>
       <tr><td>The workspace shows no files in a local-only tool</td><td>That tool bypasses the filesystem seam, so it sees the empty local mirror. Use the workspace file tree.</td></tr>
+      <tr><td><code>Failed to load plugins … loaded without registering "…dsh-remote-ssh-ui"</code> after an update</td><td>The running harness still holds the package identity it read at boot. Restart <code>dsh web</code>; reloading the page is not enough.</td></tr>
     </table>
   </section>
 

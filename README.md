@@ -166,14 +166,16 @@ ls ~/.dsh-remote/run/          # one .sh, .pid, .started, .log, .status per run
 
 ## Updating
 
-Re-run the installer. It rewrites its own composition block, which is enough to
-pick up a new version **without restarting the harness**:
+Re-run the installer. It rewrites its own composition block and its closing line
+says which of two things the running harness needs:
 
-- the **browser half** is served from bytes that `dsh-client-hmr` polls, so
-  replacing the installed bundle changes the revision the page is served and the
-  plugin reloads;
-- a change to the **host half** (`lib/*.js`) is cached by Node's ESM loader, so
-  that one does need a harness restart.
+- **reload the page** when only the **browser half** changed: the bundle is served
+  from bytes that `dsh-client-hmr` polls, so a new bundle is a new revision;
+- **restart the harness** (`dsh web`) when the **host half** (`lib/*.js`) changed —
+  Node's ESM loader keeps the module it booted with — or when a **package was
+  renamed**: `dsh-client-modules` keys its table on the name it read at boot and
+  keeps serving the new bundle under the old id, so every page load fails with
+  `loaded without registering`. The installer detects both and says so.
 
 ```sh
 node install.mjs       # or the curl one-liner again
@@ -314,6 +316,7 @@ the shipped behaviour verbatim for local paths:
 | Host key changed | The plugin refuses, correctly. Remove the stale line from `known_hosts` once you are sure. |
 | `glob`/`grep` say a program is not available | Install ripgrep on the server (`apt-get install ripgrep`, `dnf install ripgrep`, `apk add ripgrep`). |
 | The workspace shows no files in a local-only tool | That tool bypasses `ctx.fs`, so it sees the empty mirror. |
+| `Failed to load plugins … loaded without registering "…dsh-remote-ssh-ui"` after an update | The running harness still holds the package identity it read at boot. Restart `dsh web`; reloading the page is not enough. |
 
 ## Testing
 
