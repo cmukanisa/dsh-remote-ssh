@@ -70,6 +70,31 @@ check('a re-install reports the plugin as enabled', /remote-ssh\.enabled = true/
 const afterDisable = install('--dry-run')
 check('a dry run leaves the enabled state alone', /enabled = true/.test(afterDisable), afterDisable.split('\n').filter((line) => /enabled =/.test(line)).join(' | '))
 
+// ── an upgrade a running harness cannot see must say "restart", not "reload" ─
+// The client-module table of a running `dsh web` is keyed on the package name
+// read at boot; after the #6 rename the new bundle registered a different id
+// and every page load failed with "loaded without registering". The installer
+// used to close with "Reload the harness page", which is exactly the wrong advice.
+const uiManifest = join(home, 'profiles', 'plugins', 'dsh-remote-ssh-ui', 'package.json')
+const same = install()
+check('an identical re-install still says reload', /Reload the harness page/.test(same) && !/Restart the harness/.test(same), same.split('\n').filter((entry) => /Reload|Restart/.test(entry)).join(' | '))
+writeFileSync(uiManifest, JSON.stringify({ ...JSON.parse(readFileSync(uiManifest, 'utf8')), name: '@deepseek-ai/dsh-remote-ssh-ui' }, null, 2))
+const renamed = install()
+check('a renamed package is reported', /renamed.*@deepseek-ai\/dsh-remote-ssh-ui.*dsh-remote-ssh-ui/.test(renamed), renamed.split('\n').filter((entry) => /renamed/.test(entry)).join(' | '))
+check('a renamed package asks for a restart', /Restart the harness/.test(renamed) && !/Reload the harness page/.test(renamed), renamed.split('\n').filter((entry) => /Reload|Restart/.test(entry)).join(' | '))
+const hostFile = join(home, 'profiles', 'plugins', 'dsh-remote-ssh', 'lib', 'registry.js')
+writeFileSync(hostFile, `${readFileSync(hostFile, 'utf8')}\n// stale\n`)
+const hostChanged = install()
+check('a changed host half asks for a restart', /host half/.test(hostChanged) && /Restart the harness/.test(hostChanged), hostChanged.split('\n').filter((entry) => /host half|Restart/.test(entry)).join(' | '))
+const hostManifest = join(home, 'profiles', 'plugins', 'dsh-remote-ssh', 'package.json')
+writeFileSync(hostManifest, JSON.stringify({ ...JSON.parse(readFileSync(hostManifest, 'utf8')), version: '0.0.0-stale' }, null, 2))
+const versionOnly = install()
+check('a version bump alone still says reload', /Reload the harness page/.test(versionOnly) && !/Restart the harness/.test(versionOnly), versionOnly.split('\n').filter((entry) => /Reload|Restart/.test(entry)).join(' | '))
+const bundle = join(home, 'profiles', 'plugins', 'dsh-remote-ssh-ui', 'lib', 'client.js')
+writeFileSync(bundle, `${readFileSync(bundle, 'utf8')}\n// stale\n`)
+const bundleOnly = install()
+check('a changed bundle alone still says reload', /Reload the harness page/.test(bundleOnly) && !/Restart the harness/.test(bundleOnly), bundleOnly.split('\n').filter((entry) => /Reload|Restart/.test(entry)).join(' | '))
+
 const dry = install('--uninstall', '--dry-run')
 check('--dry-run changes nothing', dry.includes('would') && existsSync(join(home, 'profiles', 'plugins', 'dsh-remote-ssh')))
 

@@ -397,6 +397,7 @@ function installPackages(options, context) {
       step('info', 'would', `${options.link ? 'link' : 'copy'} ${name} ${glyph.arrow} ${shorten(destination, context.dshHome)} ${dim(`(${files} files)`)}`)
       continue
     }
+    recordUpgradeImpact(source, destination, context)
     rmSync(destination, { recursive: true, force: true })
     if (options.link) {
       // A symlinked package is imported through its real path, so Node resolves
@@ -409,6 +410,59 @@ function installPackages(options, context) {
       step('ok', 'copied', `${name} ${glyph.arrow} ${dim(shorten(destination, context.dshHome))} ${dim(`(${files} files)`)}`)
     }
   }
+}
+
+/**
+ * What a running harness would NOT pick up from this upgrade.
+ *
+ * A running `dsh web` keys its client-module table on the package NAME it read
+ * at boot and serves the bundle under that id: after a rename, the new bundle
+ * registers a different id and the page fails with "loaded without
+ * registering". The host half is cached by Node's ESM loader, so a changed
+ * `lib/*.js` other than the bundle is not seen either. Both are recorded here
+ * so the closing line can say "restart" instead of "reload".
+ * @param source - the package directory in this checkout.
+ * @param destination - the currently installed copy, if any.
+ * @param context - receives `renamed` and `hostChanged`.
+ */
+function recordUpgradeImpact(source, destination, context) {
+  const installed = readIfPresent(join(destination, 'package.json'))
+  if (installed === '') return
+  let previousName
+  try { previousName = JSON.parse(installed).name } catch { return }
+  const nextName = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).name
+  if (typeof previousName === 'string' && previousName !== nextName) context.renamed.push({ from: previousName, to: nextName })
+  const bundle = join('lib', 'client.js')
+  for (const file of listFiles(source)) {
+    if (file === bundle || file === `${bundle}.map`) continue
+    const previous = readIfPresent(join(destination, file))
+    const next = readFileSync(join(source, file), 'utf8')
+    // The manifest is read at boot too (exports, dsh.client.inject), but a
+    // version bump alone changes nothing the harness holds in memory.
+    const changed = file === 'package.json' ? withoutVersion(previous) !== withoutVersion(next) : previous !== next
+    if (changed) { context.hostChanged = true; return }
+  }
+}
+
+/** A package manifest with its `version` removed, for a like-for-like comparison. */
+function withoutVersion(manifest) {
+  try {
+    const { version, ...rest } = JSON.parse(manifest)
+    return JSON.stringify(rest)
+  } catch {
+    return manifest
+  }
+}
+
+/** Every regular file under `directory`, as paths relative to it. */
+function listFiles(directory, prefix = '') {
+  const found = []
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const rel = prefix === '' ? entry.name : join(prefix, entry.name)
+    if (entry.isDirectory()) found.push(...listFiles(join(directory, entry.name), rel))
+    else if (entry.isFile()) found.push(rel)
+  }
+  return found
 }
 
 /**
@@ -687,6 +741,8 @@ async function main() {
     pluginsDir: join(dshHome, 'profiles', 'plugins'),
     patchPath: join(dshHome, 'cordis.patch.yml'),
     settingsPath: join(dshHome, 'settings.yaml'),
+    renamed: [],
+    hostChanged: false,
   }
 
   header(dshHome)
@@ -750,6 +806,13 @@ async function main() {
   rule()
   if (options.dryRun) {
     line(`${cyan(bold('Dry run.'))} Nothing was written; every check above passed. A real run would leave the plugin ${enabled === true ? 'enabled' : 'switched off'}.`)
+  } else if (context.renamed.length > 0 || context.hostChanged) {
+    // A page reload is not enough here; a running harness keeps serving the
+    // old package identity (or the old host module) until it is restarted.
+    for (const { from, to } of context.renamed) step('warn', 'renamed', `${from} ${glyph.arrow} ${to}: a running harness still serves the old id`)
+    if (context.hostChanged) step('warn', 'host half', 'changed: a running harness keeps the module it loaded at boot')
+    line()
+    line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} ${yellow(bold('Restart the harness'))} (${cyan('dsh web')}) — reloading the page is not enough for this upgrade${enabled === true ? `, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}` : ''}.`)
   } else if (enabled === true) {
     line(`${green(bold(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s.`))} Reload the harness page, then ${cyan('workspace "+"')} ${glyph.arrow} ${cyan('"Serveur distant (SSH)"')}.`)
   } else {

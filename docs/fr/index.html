@@ -164,14 +164,18 @@
 
   <section>
     <h2>Mettre à jour</h2>
-    <p>Relancez l'installeur. Il réécrit son propre bloc de composition, ce qui suffit à prendre une
-      nouvelle version <strong>sans redémarrer le harness</strong> :</p>
+    <p>Relancez l'installeur. Il réécrit son propre bloc de composition, et sa dernière ligne dit
+      laquelle de deux choses le harness en cours a besoin :</p>
     <ul>
-      <li>la <strong>moitié navigateur</strong> est servie depuis des octets que
-        <code>dsh-client-hmr</code> surveille : remplacer le bundle installé change la révision
-        servie à la page ;</li>
-      <li>un changement de la <strong>moitié hôte</strong> (<code>lib/*.js</code>) est mis en cache
-        par le loader ESM de Node : celui-là exige un redémarrage du harness.</li>
+      <li><strong>recharger la page</strong> quand seule la <strong>moitié navigateur</strong> a
+        changé : le bundle est servi depuis des octets que <code>dsh-client-hmr</code> surveille, un
+        nouveau bundle est une nouvelle révision ;</li>
+      <li><strong>redémarrer le harness</strong> (<code>dsh web</code>) quand la <strong>moitié
+        hôte</strong> (<code>lib/*.js</code>) a changé — le loader ESM de Node garde le module chargé
+        au démarrage — ou quand un <strong>paquet a été renommé</strong> : le harness indexe ses
+        modules client sur le nom lu au démarrage et continue de servir le nouveau bundle sous
+        l'ancien identifiant, si bien que chaque chargement de page échoue avec
+        <code>loaded without registering</code>. L'installeur détecte les deux cas et le dit.</li>
     </ul>
     <pre><code>node install.mjs       # ou la commande curl à nouveau</code></pre>
   </section>
@@ -186,6 +190,7 @@
       <tr><td><code>glob</code>/<code>grep</code> signalent un programme absent</td><td>Installez ripgrep sur le serveur (<code>apt-get install ripgrep</code>, <code>dnf install ripgrep</code>, <code>apk add ripgrep</code>).</td></tr>
       <tr><td>Un pair du tailnet expire</td><td>Tailscale le signale hors ligne ; le formulaire de connexion le dit à l'avance.</td></tr>
       <tr><td>Le workspace semble vide dans un outil purement local</td><td>Cet outil contourne la couche filesystem et voit donc le miroir local vide. Utilisez l'arborescence de fichiers du workspace.</td></tr>
+      <tr><td><code>Failed to load plugins … loaded without registering "…dsh-remote-ssh-ui"</code> après une mise à jour</td><td>Le harness en cours garde l'identité de paquet lue au démarrage. Redémarrez <code>dsh web</code> ; recharger la page ne suffit pas.</td></tr>
     </table>
   </section>
 

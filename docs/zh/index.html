@@ -153,13 +153,15 @@
 
   <section>
     <h2>更新</h2>
-    <p>重新运行安装器即可。它会重写自己的组合配置块，这足以启用新版本而<strong>无需重启
-      harness</strong>：</p>
+    <p>重新运行安装器即可。它会重写自己的组合配置块，并在最后一行说明正在运行的 harness
+      需要哪一种操作：</p>
     <ul>
-      <li><strong>浏览器端</strong>内容由 <code>dsh-client-hmr</code> 轮询的字节提供，替换已安装的
-        bundle 会改变页面获取到的修订号；</li>
-      <li><strong>宿主端</strong>（<code>lib/*.js</code>）由 Node 的 ESM loader 缓存，因此那一半需要
-        重启 harness。</li>
+      <li>只有<strong>浏览器端</strong>变化时，<strong>刷新页面</strong>即可：bundle 由
+        <code>dsh-client-hmr</code> 轮询的字节提供，新 bundle 就是新修订号；</li>
+      <li><strong>宿主端</strong>（<code>lib/*.js</code>）变化时——Node 的 ESM loader 会保留启动时加载的模块——
+        或者<strong>某个包被重命名</strong>时，需要<strong>重启 harness</strong>（<code>dsh web</code>）：
+        harness 以启动时读取的包名为键索引客户端模块，并继续用旧 id 提供新 bundle，于是每次加载页面都会
+        报 <code>loaded without registering</code>。安装器会检测这两种情况并明确提示。</li>
     </ul>
     <pre><code>node install.mjs       # 或再次执行 curl 一行命令</code></pre>
   </section>
@@ -174,6 +176,7 @@
       <tr><td><code>glob</code>/<code>grep</code> 提示程序不存在</td><td>在服务器上安装 ripgrep（<code>apt-get install ripgrep</code>、<code>dnf install ripgrep</code>、<code>apk add ripgrep</code>）。</td></tr>
       <tr><td>tailnet 节点连接超时</td><td>Tailscale 已标记其离线，连接表单会事先说明。</td></tr>
       <tr><td>某些纯本地工具看不到文件</td><td>该工具绕过了文件系统抽象层，因此只看到空的本地镜像。请使用工作区文件树。</td></tr>
+      <tr><td>更新后出现 <code>Failed to load plugins … loaded without registering "…dsh-remote-ssh-ui"</code></td><td>正在运行的 harness 仍持有启动时读取的包标识。重启 <code>dsh web</code>；仅刷新页面不够。</td></tr>
     </table>
   </section>
 
